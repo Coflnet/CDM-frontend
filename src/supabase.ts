@@ -33,6 +33,7 @@ export interface Container {
   status: 'active' | 'scheduled_pickup' | 'picked_up' | 'ordered'
   delivered_at: string
   pickup_date: string | null
+  driveway_video_url: string
   created_at: string
 }
 
