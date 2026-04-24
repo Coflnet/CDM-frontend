@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../../supabase'
-import { authState } from '../../store/auth'
 import type { Container, Site, Pickup } from '../../supabase'
 import ContainerCard from './ContainerCard.vue'
 import SchedulePickupModal from './SchedulePickupModal.vue'
@@ -22,9 +21,9 @@ const showOrder = ref(false)
 async function load() {
   loading.value = true
   const [sitesRes, containersRes, pickupsRes] = await Promise.all([
-    supabase.from('sites').select('*').eq('customer_id', authState.user!.id).order('created_at'),
-    supabase.from('containers').select('*, sites!inner(customer_id)').eq('sites.customer_id', authState.user!.id).order('created_at'),
-    supabase.from('pickups').select('*').eq('customer_id', authState.user!.id).order('scheduled_at'),
+    supabase.from('sites').select('*').order('created_at'),
+    supabase.from('containers').select('*').order('created_at'),
+    supabase.from('pickups').select('*').order('scheduled_at'),
   ])
   sites.value = sitesRes.data ?? []
   containers.value = containersRes.data ?? []
@@ -68,7 +67,7 @@ function containerForPickup(p: Pickup) {
       <div class="page">
         <div class="dash-header row-between mb-2">
           <div>
-            <h1 class="dash-greeting">Hello, {{ authState.profile?.full_name?.split(' ')[0] }}</h1>
+            <h1 class="dash-greeting">Customer Portal</h1>
             <p class="text-sm text-muted">Container overview</p>
           </div>
           <button class="btn-primary btn-sm" @click="showOrder = true">+ Order</button>

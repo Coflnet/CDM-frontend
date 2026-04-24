@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { supabase } from '../../supabase'
-import { authState } from '../../store/auth'
 import type { Site, ContainerOrder } from '../../supabase'
 
 const props = defineProps<{ sites: Site[] }>()
@@ -21,7 +20,6 @@ onMounted(async () => {
   const { data } = await supabase
     .from('container_orders')
     .select('*')
-    .eq('customer_id', authState.user!.id)
     .order('created_at', { ascending: false })
     .limit(3)
   pastOrders.value = data ?? []
@@ -39,8 +37,9 @@ async function save() {
   error.value = ''
   loading.value = true
   try {
+    const site = props.sites.find(s => s.id === siteId.value)!
     const { error: insertErr } = await supabase.from('container_orders').insert({
-      customer_id: authState.user!.id,
+      customer_id: site.customer_id,
       site_id: siteId.value,
       container_type: containerType.value,
       quantity: quantity.value,

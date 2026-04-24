@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../../supabase'
-import { authState } from '../../store/auth'
 import type { Pickup, Site, Container } from '../../supabase'
 import DrivewayVideoModal from './DrivewaVideoModal.vue'
 
@@ -89,7 +88,7 @@ async function startDriving(p: EnrichedPickup) {
   const eta = new Date(now.getTime() + 30 * 60 * 1000) // default +30 min
   await supabase.from('pickups').update({
     status: 'driver_en_route',
-    driver_id: authState.user!.id,
+    driver_id: null,
     driver_started_at: now.toISOString(),
     driver_eta: eta.toISOString(),
   }).eq('id', p.id)
@@ -119,7 +118,7 @@ async function saveEta() {
         <div class="row-between mb-3">
           <div>
             <h1>Driver Queue</h1>
-            <p class="text-sm text-muted">{{ authState.profile?.full_name }}</p>
+            <p class="text-sm text-muted">Driver</p>
           </div>
           <div class="stat-chip">
             <span class="chip-val">{{ queuePickups.length }}</span>

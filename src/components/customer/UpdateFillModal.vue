@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { supabase } from '../../supabase'
-import { authState } from '../../store/auth'
 import type { Container } from '../../supabase'
 
 const props = defineProps<{ container: Container }>()
@@ -44,7 +43,7 @@ async function save() {
         container_id: props.container.id,
         photo_url: photoUrl,
         fill_state: fillState.value,
-        taken_by: authState.user!.id,
+        taken_by: props.container.site_id,
       })
     }
     emit('updated')

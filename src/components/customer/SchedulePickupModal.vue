@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { supabase } from '../../supabase'
-import { authState } from '../../store/auth'
 import type { Container, Site, Pickup } from '../../supabase'
 
 const props = defineProps<{
@@ -108,7 +107,7 @@ async function save() {
       .insert({
         container_id: props.container.id,
         site_id: props.site.id,
-        customer_id: authState.user!.id,
+        customer_id: props.site.customer_id,
         scheduled_at: new Date(scheduledAt.value).toISOString(),
         notes: notes.value,
         driveway_video_url: finalVideoUrl,
