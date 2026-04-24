@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { supabase } from '../../supabase'
 import type { Container, Site, Pickup } from '../../supabase'
 
@@ -50,11 +50,14 @@ onMounted(() => {
 async function startCamera() {
   try {
     stream.value = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    await nextTick()
     if (videoEl.value) {
       videoEl.value.srcObject = stream.value
+      videoEl.value.play()
     }
   } catch (e: any) {
     error.value = 'Camera access denied: ' + e.message
+    step.value = 'form'
   }
 }
 
@@ -157,7 +160,7 @@ async function save() {
           </div>
           <div v-else>
             <p class="text-sm text-muted mb-2">You must record a short video of the driveway path so the driver can navigate to your site.</p>
-            <button class="btn-warning btn-block" @click="step = 'video'; startCamera()">
+            <button class="btn-warning btn-block" @click="step = 'video'; nextTick(() => startCamera())">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a1 1 0 011-1h9a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8z"/></svg>
               Record Driveway Video
             </button>
@@ -191,7 +194,7 @@ async function save() {
         <div v-if="videoPreviewUrl" class="mt-2">
           <video :src="videoPreviewUrl" controls></video>
           <div class="row mt-2" style="gap:0.75rem">
-            <button class="btn-ghost btn-block" @click="videoPreviewUrl = ''; videoBlob = null; startCamera()">Re-record</button>
+            <button class="btn-ghost btn-block" @click="videoPreviewUrl = ''; videoBlob = null; nextTick(() => startCamera())">Re-record</button>
             <button class="btn-primary btn-block" @click="step = 'form'">Use This Video</button>
           </div>
         </div>
