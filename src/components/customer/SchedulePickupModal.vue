@@ -27,7 +27,6 @@ const chunks: BlobPart[] = []
 const videoEl = ref<HTMLVideoElement | null>(null)
 const stream = ref<MediaStream | null>(null)
 
-// Check if pickup already has a video recorded for this container
 async function checkExistingPickup() {
   const { data } = await supabase
     .from('pickups')
@@ -56,7 +55,7 @@ async function startCamera() {
       videoEl.value.play()
     }
   } catch (e: any) {
-    error.value = 'Camera access denied: ' + e.message
+    error.value = 'Kamerazugriff verweigert: ' + e.message
     step.value = 'form'
   }
 }
@@ -95,7 +94,7 @@ async function uploadVideo(): Promise<string> {
 
 async function save() {
   if (!videoUrl.value && !videoBlob.value) {
-    error.value = 'Please record a driveway video before scheduling.'
+    error.value = 'Bitte nimm vor der Planung ein Einfahrtsvideo auf.'
     return
   }
   error.value = ''
@@ -136,7 +135,7 @@ async function save() {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>Schedule Pickup</h2>
+        <h2>Abholung planen</h2>
         <button class="modal-close" @click="emit('close')">&times;</button>
       </div>
 
@@ -144,61 +143,61 @@ async function save() {
 
       <div v-if="step === 'form'">
         <div class="form-group">
-          <label>Pickup Date &amp; Time</label>
+          <label>Datum &amp; Uhrzeit der Abholung</label>
           <input type="datetime-local" v-model="scheduledAt" />
         </div>
         <div class="form-group">
-          <label>Notes for Driver</label>
-          <textarea v-model="notes" rows="2" placeholder="Any access notes..."></textarea>
+          <label>Hinweise für den Fahrer</label>
+          <textarea v-model="notes" rows="2" placeholder="Zugangsinformationen..."></textarea>
         </div>
 
         <div class="video-section">
-          <p class="section-title">Driveway Video</p>
+          <p class="section-title">Einfahrtsvideo</p>
           <div v-if="videoPreviewUrl || videoUrl" class="video-preview">
             <video :src="videoPreviewUrl || videoUrl" controls></video>
-            <p class="text-sm text-muted mt-1">Video recorded. <a href="#" @click.prevent="videoPreviewUrl = ''; videoBlob = null; videoUrl = ''">Re-record</a></p>
+            <p class="text-sm text-muted mt-1">Video aufgenommen. <a href="#" @click.prevent="videoPreviewUrl = ''; videoBlob = null; videoUrl = ''">Neu aufnehmen</a></p>
           </div>
           <div v-else>
-            <p class="text-sm text-muted mb-2">You must record a short video of the driveway path so the driver can navigate to your site.</p>
+            <p class="text-sm text-muted mb-2">Bitte nimm ein kurzes Video des Einfahrtsweges auf, damit der Fahrer deinen Standort findet.</p>
             <button class="btn-warning btn-block" @click="step = 'video'; nextTick(() => startCamera())">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a1 1 0 011-1h9a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8z"/></svg>
-              Record Driveway Video
+              Einfahrtsvideo aufnehmen
             </button>
           </div>
         </div>
 
         <div class="row mt-3" style="gap:0.75rem">
-          <button class="btn-ghost btn-block" @click="emit('close')">Cancel</button>
+          <button class="btn-ghost btn-block" @click="emit('close')">Abbrechen</button>
           <button class="btn-primary btn-block" @click="save" :disabled="loading">
-            {{ loading ? 'Saving...' : 'Schedule Pickup' }}
+            {{ loading ? 'Speichern...' : 'Abholung planen' }}
           </button>
         </div>
       </div>
 
       <div v-else>
-        <p class="text-sm text-muted mb-2">Film the path from the street to where the container is placed. Keep the video under 60 seconds.</p>
+        <p class="text-sm text-muted mb-2">Filme den Weg von der Straße bis zum Containerstandort. Bitte unter 60 Sekunden bleiben.</p>
         <div class="camera-area">
           <video ref="videoEl" autoplay muted playsinline class="camera-feed"></video>
           <div v-if="!stream && !videoPreviewUrl" class="camera-placeholder">
-            <span>Starting camera...</span>
+            <span>Kamera wird gestartet...</span>
           </div>
         </div>
         <div class="row mt-2" style="gap:0.75rem; justify-content: center">
           <button v-if="!recording" class="btn-danger btn-lg" @click="startRecording">
-            &#9679; Start Recording
+            &#9679; Aufnahme starten
           </button>
           <button v-else class="btn-warning btn-lg" @click="stopRecording">
-            &#9632; Stop Recording
+            &#9632; Stopp
           </button>
         </div>
         <div v-if="videoPreviewUrl" class="mt-2">
           <video :src="videoPreviewUrl" controls></video>
           <div class="row mt-2" style="gap:0.75rem">
-            <button class="btn-ghost btn-block" @click="videoPreviewUrl = ''; videoBlob = null; nextTick(() => startCamera())">Re-record</button>
-            <button class="btn-primary btn-block" @click="step = 'form'">Use This Video</button>
+            <button class="btn-ghost btn-block" @click="videoPreviewUrl = ''; videoBlob = null; nextTick(() => startCamera())">Neu aufnehmen</button>
+            <button class="btn-primary btn-block" @click="step = 'form'">Video verwenden</button>
           </div>
         </div>
-        <button v-if="!videoPreviewUrl" class="btn-ghost btn-block mt-2" @click="step = 'form'; stream?.getTracks().forEach(t => t.stop()); stream = null">Back</button>
+        <button v-if="!videoPreviewUrl" class="btn-ghost btn-block mt-2" @click="step = 'form'; stream?.getTracks().forEach(t => t.stop()); stream = null">Zurück</button>
       </div>
     </div>
   </div>

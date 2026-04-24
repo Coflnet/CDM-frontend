@@ -51,7 +51,7 @@ function containersForSite(siteId: string) {
 }
 
 function pickupStatusLabel(s: string) {
-  const m: Record<string, string> = { pending: 'Pending', driver_en_route: 'Driver En Route', completed: 'Completed', cancelled: 'Cancelled' }
+  const m: Record<string, string> = { pending: 'Ausstehend', driver_en_route: 'Fahrer unterwegs', completed: 'Abgeschlossen', cancelled: 'Storniert' }
   return m[s] ?? s
 }
 function pickupStatusBadge(s: string) {
@@ -79,10 +79,10 @@ function fillColor(f: number) {
       <div class="page">
         <div class="dash-header row-between mb-2">
           <div>
-            <h1 class="dash-greeting">Customer Portal</h1>
-            <p class="text-sm text-muted">Container overview</p>
+            <h1 class="dash-greeting">Kundenportal</h1>
+            <p class="text-sm text-muted">Container-Übersicht</p>
           </div>
-          <button class="btn-primary btn-sm" @click="showOrder = true">+ Order</button>
+          <button class="btn-primary btn-sm" @click="showOrder = true">+ Bestellen</button>
         </div>
 
         <div v-if="loading" class="spinner"></div>
@@ -92,31 +92,31 @@ function fillColor(f: number) {
           <div class="summary-chips row mb-3">
             <div class="chip">
               <span class="chip-val">{{ activeContainers.length }}</span>
-              <span class="chip-label">Active</span>
+              <span class="chip-label">Aktiv</span>
             </div>
             <div class="chip chip-warn" v-if="upcomingPickups.length">
               <span class="chip-val">{{ upcomingPickups.length }}</span>
-              <span class="chip-label">Scheduled</span>
+              <span class="chip-label">Geplant</span>
             </div>
             <div class="chip">
               <span class="chip-val">{{ sites.length }}</span>
-              <span class="chip-label">Sites</span>
+              <span class="chip-label">Standorte</span>
             </div>
           </div>
 
           <!-- Tabs -->
           <div class="tabs row mb-3">
-            <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Containers</button>
-            <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Pickups</button>
-            <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Sites</button>
+            <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
+            <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
+            <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Standorte</button>
           </div>
 
           <!-- Containers tab -->
           <div v-if="activeTab === 'containers'">
             <div v-if="activeContainers.length === 0" class="empty-state">
               <div class="icon">&#128465;</div>
-              <p>No active containers.</p>
-              <button class="btn-primary mt-2" @click="showOrder = true">Order Container</button>
+              <p>Keine aktiven Container.</p>
+              <button class="btn-primary mt-2" @click="showOrder = true">Container bestellen</button>
             </div>
             <div v-else class="stack">
               <ContainerCard
@@ -135,25 +135,25 @@ function fillColor(f: number) {
           <div v-if="activeTab === 'pickups'">
             <div v-if="upcomingPickups.length === 0" class="empty-state">
               <div class="icon">&#128197;</div>
-              <p>No scheduled pickups.</p>
+              <p>Keine geplanten Abholungen.</p>
             </div>
             <div v-else class="stack">
               <div v-for="p in upcomingPickups" :key="p.id" class="card" :class="{ 'warn-pulse': pickupSoon(p.scheduled_at) }">
                 <div class="row-between mb-1">
                   <div>
-                    <h3>{{ containerForPickup(p)?.container_type ?? '?' }} Pickup</h3>
+                    <h3>{{ containerForPickup(p)?.container_type ?? '?' }} Abholung</h3>
                     <p class="text-sm text-muted">{{ siteForContainer(containerForPickup(p)!).name }}</p>
                   </div>
                   <span class="badge" :class="pickupStatusBadge(p.status)">{{ pickupStatusLabel(p.status) }}</span>
                 </div>
                 <p class="text-sm text-muted">{{ formatDateTime(p.scheduled_at) }}</p>
                 <div v-if="p.driver_eta" class="alert alert-info" style="margin-top:0.5rem">
-                  Driver ETA: {{ formatDateTime(p.driver_eta) }}
+                  Fahrer ETA: {{ formatDateTime(p.driver_eta) }}
                 </div>
                 <div v-if="pickupSoon(p.scheduled_at)" class="alert alert-warning" style="margin-top:0.5rem">
-                  Pickup is within 48 hours!
+                  Abholung innerhalb von 48 Stunden!
                 </div>
-                <div v-if="p.notes" class="text-sm text-muted" style="margin-top:0.35rem">Note: {{ p.notes }}</div>
+                <div v-if="p.notes" class="text-sm text-muted" style="margin-top:0.35rem">Notiz: {{ p.notes }}</div>
               </div>
             </div>
           </div>
@@ -161,14 +161,14 @@ function fillColor(f: number) {
           <!-- Sites tab -->
           <div v-if="activeTab === 'sites'">
             <div class="row-between mb-2">
-              <p class="section-title" style="margin-bottom:0">All Sites</p>
-              <button class="btn-primary btn-sm" @click="showCreateSite = true">+ Add Site</button>
+              <p class="section-title" style="margin-bottom:0">Alle Standorte</p>
+              <button class="btn-primary btn-sm" @click="showCreateSite = true">+ Standort hinzufügen</button>
             </div>
 
             <div v-if="sites.length === 0" class="empty-state">
               <div class="icon">&#128205;</div>
-              <p>No sites yet. Add your first job site.</p>
-              <button class="btn-primary mt-2" @click="showCreateSite = true">Add Site</button>
+              <p>Noch keine Standorte. Füge deinen ersten Standort hinzu.</p>
+              <button class="btn-primary mt-2" @click="showCreateSite = true">Standort hinzufügen</button>
             </div>
 
             <div v-else class="stack">
@@ -178,7 +178,7 @@ function fillColor(f: number) {
                     <h3>{{ s.name }}</h3>
                     <p class="text-sm text-muted">{{ s.address }}</p>
                   </div>
-                  <div class="badge badge-gray">{{ containersForSite(s.id).length }} containers</div>
+                  <div class="badge badge-gray">{{ containersForSite(s.id).length }} Container</div>
                 </div>
 
                 <div v-if="containersForSite(s.id).length" class="site-containers">
@@ -190,12 +190,12 @@ function fillColor(f: number) {
                       </div>
                       <span class="text-sm text-muted" style="min-width:2.5rem;text-align:right">{{ c.fill_state }}%</span>
                     </div>
-                    <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Pickup</button>
+                    <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Abholen</button>
                   </div>
                 </div>
 
                 <div class="row" style="gap:0.5rem;margin-top:0.75rem">
-                  <button class="btn-ghost btn-sm" @click="showOrder = true">+ Order Container</button>
+                  <button class="btn-ghost btn-sm" @click="showOrder = true">+ Container bestellen</button>
                 </div>
               </div>
             </div>
@@ -208,19 +208,19 @@ function fillColor(f: number) {
     <nav class="bottom-nav">
       <button class="bottom-nav-item" :class="{ active: activeTab === 'containers' }" @click="activeTab = 'containers'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/></svg>
-        Containers
+        Container
       </button>
       <button class="bottom-nav-item" :class="{ active: activeTab === 'pickups' }" @click="activeTab = 'pickups'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-        Pickups
+        Abholungen
       </button>
       <button class="bottom-nav-item" :class="{ active: activeTab === 'sites' }" @click="activeTab = 'sites'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-        Sites
+        Standorte
       </button>
       <button class="bottom-nav-item" @click="showOrder = true">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-        Order
+        Bestellen
       </button>
     </nav>
 

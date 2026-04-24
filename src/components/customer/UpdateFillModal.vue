@@ -59,14 +59,14 @@ async function save() {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>Update Fill State</h2>
+        <h2>Füllstand aktualisieren</h2>
         <button class="modal-close" @click="emit('close')">&times;</button>
       </div>
 
       <div v-if="error" class="alert alert-error mb-2">{{ error }}</div>
 
       <div class="form-group">
-        <label>Fill Level: <strong :style="{ color: fillColor(fillState) }">{{ fillState }}%</strong></label>
+        <label>Füllstand: <strong :style="{ color: fillColor(fillState) }">{{ fillState }}%</strong></label>
         <div class="slider-wrap">
           <input type="range" v-model.number="fillState" min="0" max="100" step="5" class="fill-slider" />
           <div class="fill-bar-wrap mt-1">
@@ -74,29 +74,29 @@ async function save() {
           </div>
         </div>
         <div class="fill-labels row-between text-sm text-muted mt-1">
-          <span>Empty</span><span>Half</span><span>Full</span>
+          <span>Leer</span><span>Halb</span><span>Voll</span>
         </div>
       </div>
 
       <div class="form-group">
-        <label>Container Photo (optional)</label>
+        <label>Foto des Containers (optional)</label>
         <div v-if="photoPreviewUrl" class="photo-preview">
-          <img :src="photoPreviewUrl" alt="Container photo" />
-          <button class="btn-ghost btn-sm mt-1" @click="photoPreviewUrl = ''; photoBlob = null">Remove</button>
+          <img :src="photoPreviewUrl" alt="Container-Foto" />
+          <button class="btn-ghost btn-sm mt-1" @click="photoPreviewUrl = ''; photoBlob = null">Entfernen</button>
         </div>
         <div v-else class="photo-btn-wrap">
           <button class="btn-ghost btn-block" @click="fileInput?.click()">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-            Take / Upload Photo
+            Foto aufnehmen / hochladen
           </button>
           <input ref="fileInput" type="file" accept="image/*" capture="environment" style="display:none" @change="handleFile" />
         </div>
       </div>
 
       <div class="row mt-3" style="gap:0.75rem">
-        <button class="btn-ghost btn-block" @click="emit('close')">Cancel</button>
+        <button class="btn-ghost btn-block" @click="emit('close')">Abbrechen</button>
         <button class="btn-primary btn-block" @click="save" :disabled="loading">
-          {{ loading ? 'Saving...' : 'Save' }}
+          {{ loading ? 'Speichern...' : 'Speichern' }}
         </button>
       </div>
     </div>

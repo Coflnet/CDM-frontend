@@ -13,26 +13,26 @@ import DriverDashboard from './components/driver/DriverDashboard.vue'
           <span class="brand-diamond">&#9670;</span>
           <span class="brand-name">CDM</span>
         </div>
-        <p class="brand-sub">Container &amp; Dumpster Management</p>
-        <p class="brand-by">by Coflnet</p>
+        <p class="brand-sub">Container- &amp; Mulden-Management</p>
+        <p class="brand-by">von Coflnet</p>
 
-        <p class="choose-label">Who are you?</p>
+        <p class="choose-label">Wer bist du?</p>
 
         <div class="role-options">
           <button class="role-btn" @click="selectRole('customer')">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
             </span>
-            <span class="role-title">Customer</span>
-            <span class="role-desc">Manage containers &amp; schedule pickups</span>
+            <span class="role-title">Kunde</span>
+            <span class="role-desc">Container verwalten &amp; Abholungen planen</span>
           </button>
 
           <button class="role-btn" @click="selectRole('driver')">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
             </span>
-            <span class="role-title">Driver</span>
-            <span class="role-desc">View pickup queue &amp; navigate to sites</span>
+            <span class="role-title">Fahrer</span>
+            <span class="role-desc">Abholwarteschlange &amp; Navigation zu Standorten</span>
           </button>
         </div>
       </div>
@@ -43,9 +43,9 @@ import DriverDashboard from './components/driver/DriverDashboard.vue'
       <header class="app-header">
         <div class="app-header-title">
           <span class="logo-accent"></span>
-          CDM &mdash; {{ authState.role === 'driver' ? 'Driver View' : 'Customer Portal' }}
+          CDM &mdash; {{ authState.role === 'driver' ? 'Fahreransicht' : 'Kundenportal' }}
         </div>
-        <button class="btn-ghost btn-sm" @click="clearRole">Switch Role</button>
+        <button class="btn-ghost btn-sm" @click="clearRole">Rolle wechseln</button>
       </header>
       <CustomerDashboard v-if="authState.role === 'customer'" />
       <DriverDashboard v-else />

@@ -7,12 +7,12 @@ const emit = defineEmits<{ (e: 'close'): void }>()
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>Driveway Video</h2>
+        <h2>Einfahrtsvideo</h2>
         <button class="modal-close" @click="emit('close')">&times;</button>
       </div>
-      <p class="text-sm text-muted mb-2">Site: {{ siteName }}</p>
+      <p class="text-sm text-muted mb-2">Standort: {{ siteName }}</p>
       <video :src="videoUrl" controls autoplay></video>
-      <button class="btn-ghost btn-block mt-3" @click="emit('close')">Close</button>
+      <button class="btn-ghost btn-block mt-3" @click="emit('close')">Schließen</button>
     </div>
   </div>
 </template>

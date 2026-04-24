@@ -11,8 +11,8 @@ const error = ref('')
 const loading = ref(false)
 
 async function save() {
-  if (!name.value.trim()) { error.value = 'Site name is required.'; return }
-  if (!address.value.trim()) { error.value = 'Address is required.'; return }
+  if (!name.value.trim()) { error.value = 'Standortname ist erforderlich.'; return }
+  if (!address.value.trim()) { error.value = 'Adresse ist erforderlich.'; return }
   error.value = ''
   loading.value = true
   try {
@@ -39,25 +39,25 @@ async function save() {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>Add New Site</h2>
+        <h2>Neuen Standort hinzufügen</h2>
         <button class="modal-close" @click="emit('close')">&times;</button>
       </div>
 
       <div v-if="error" class="alert alert-error mb-2">{{ error }}</div>
 
       <div class="form-group">
-        <label>Site Name</label>
-        <input v-model="name" type="text" placeholder="e.g. 45 Oak Ave Job Site" autofocus />
+        <label>Standortname</label>
+        <input v-model="name" type="text" placeholder="z. B. Baustelle Eichenweg 45" autofocus />
       </div>
       <div class="form-group">
-        <label>Address</label>
-        <input v-model="address" type="text" placeholder="123 Main St, City, State" />
+        <label>Adresse</label>
+        <input v-model="address" type="text" placeholder="Musterstraße 1, Stadt, Bundesland" />
       </div>
 
       <div class="row mt-3" style="gap:0.75rem">
-        <button class="btn-ghost btn-block" @click="emit('close')">Cancel</button>
+        <button class="btn-ghost btn-block" @click="emit('close')">Abbrechen</button>
         <button class="btn-primary btn-block" @click="save" :disabled="loading">
-          {{ loading ? 'Saving...' : 'Create Site' }}
+          {{ loading ? 'Speichern...' : 'Standort erstellen' }}
         </button>
       </div>
     </div>

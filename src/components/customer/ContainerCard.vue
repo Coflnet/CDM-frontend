@@ -23,14 +23,14 @@ const fillColor = computed(() => {
 const pickupSoon = computed(() => {
   if (!props.container.pickup_date) return false
   const diff = new Date(props.container.pickup_date).getTime() - Date.now()
-  return diff < 1000 * 60 * 60 * 24 * 2 // within 48h
+  return diff < 1000 * 60 * 60 * 24 * 2
 })
 
 const statusLabel: Record<string, string> = {
-  active: 'Active',
-  scheduled_pickup: 'Pickup Scheduled',
-  picked_up: 'Picked Up',
-  ordered: 'Ordered',
+  active: 'Aktiv',
+  scheduled_pickup: 'Abholung geplant',
+  picked_up: 'Abgeholt',
+  ordered: 'Bestellt',
 }
 const statusBadge: Record<string, string> = {
   active: 'badge-green',
@@ -41,7 +41,7 @@ const statusBadge: Record<string, string> = {
 
 function formatDate(d: string | null) {
   if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return new Date(d).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 </script>
 
@@ -49,7 +49,7 @@ function formatDate(d: string | null) {
   <div class="card container-card" :class="{ 'warn-pulse': pickupSoon }">
     <div class="row-between mb-1">
       <div>
-        <h3>{{ container.container_type }} Dumpster</h3>
+        <h3>{{ container.container_type }} Mulde</h3>
         <p class="text-sm text-muted">{{ site.name }}</p>
       </div>
       <span class="badge" :class="statusBadge[container.status]">{{ statusLabel[container.status] }}</span>
@@ -63,18 +63,18 @@ function formatDate(d: string | null) {
     </div>
 
     <div class="meta-row row-between text-sm text-muted">
-      <span>Delivered {{ formatDate(container.delivered_at) }}</span>
+      <span>Geliefert {{ formatDate(container.delivered_at) }}</span>
       <span v-if="container.pickup_date" :class="{ 'text-danger': pickupSoon }">
-        Pickup: {{ formatDate(container.pickup_date) }}
-        <span v-if="pickupSoon" class="badge badge-red" style="margin-left:4px">Soon</span>
+        Abholung: {{ formatDate(container.pickup_date) }}
+        <span v-if="pickupSoon" class="badge badge-red" style="margin-left:4px">Bald</span>
       </span>
     </div>
 
     <hr class="divider" />
 
     <div class="row" style="gap:0.5rem;flex-wrap:wrap">
-      <button class="btn-primary btn-sm" @click="emit('schedule-pickup')">Schedule Pickup</button>
-      <button class="btn-ghost btn-sm" @click="emit('update-fill')">Update Fill</button>
+      <button class="btn-primary btn-sm" @click="emit('schedule-pickup')">Abholung planen</button>
+      <button class="btn-ghost btn-sm" @click="emit('update-fill')">Füllstand</button>
       <button class="btn-ghost btn-sm" @click="emit('view-detail')">Details</button>
     </div>
   </div>

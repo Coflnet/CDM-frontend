@@ -53,7 +53,7 @@ async function openCamera() {
       videoEl.value.play()
     }
   } catch (e: any) {
-    error.value = 'Camera access denied: ' + (e as Error).message
+    error.value = 'Kamerazugriff verweigert: ' + (e as Error).message
     step.value = 'form'
   }
 }
@@ -102,8 +102,8 @@ async function uploadVideo(siteIdVal: string): Promise<string> {
 }
 
 async function save() {
-  if (!siteId.value) { error.value = 'Please select a site.'; return }
-  if (!videoBlob.value) { error.value = 'Please record a driveway video before ordering.'; return }
+  if (!siteId.value) { error.value = 'Bitte wähle einen Standort aus.'; return }
+  if (!videoBlob.value) { error.value = 'Bitte nimm vor der Bestellung ein Einfahrtsvideo auf.'; return }
   error.value = ''
   loading.value = true
   try {
@@ -145,7 +145,7 @@ async function save() {
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>{{ step === 'video' ? 'Record Driveway Video' : 'Order New Container' }}</h2>
+        <h2>{{ step === 'video' ? 'Einfahrtsvideo aufnehmen' : 'Neuen Container bestellen' }}</h2>
         <button class="modal-close" @click="stopCamera(); emit('close')">&times;</button>
       </div>
 
@@ -154,97 +154,97 @@ async function save() {
       <!-- Order form -->
       <div v-if="step === 'form'">
         <div v-if="pastOrders.length" class="past-orders mb-2">
-          <p class="section-title">Re-order Previous</p>
+          <p class="section-title">Erneut bestellen</p>
           <div class="stack">
             <div v-for="o in pastOrders" :key="o.id" class="row-between card" style="padding:0.75rem">
               <div>
                 <span class="text-sm font-bold">{{ o.quantity }}x {{ o.container_type }}</span>
                 <p class="text-sm text-muted">{{ sites.find(s => s.id === o.site_id)?.name ?? 'Unknown site' }}</p>
               </div>
-              <button class="btn-ghost btn-sm" @click="reorder(o)">Reorder</button>
+              <button class="btn-ghost btn-sm" @click="reorder(o)">Wiederholen</button>
             </div>
           </div>
           <hr class="divider" />
         </div>
 
         <div class="form-group">
-          <label>Site</label>
+          <label>Standort</label>
           <select v-model="siteId">
             <option v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Container Size</label>
+          <label>Containergröße</label>
           <select v-model="containerType">
-            <option v-for="t in containerTypes" :key="t" :value="t">{{ t }} Dumpster</option>
+            <option v-for="t in containerTypes" :key="t" :value="t">{{ t }} Mulde</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Quantity</label>
+          <label>Anzahl</label>
           <input type="number" v-model.number="quantity" min="1" max="10" />
         </div>
         <div class="form-group">
-          <label>Notes</label>
-          <textarea v-model="notes" rows="2" placeholder="Any special instructions..."></textarea>
+          <label>Hinweise</label>
+          <textarea v-model="notes" rows="2" placeholder="Besondere Anweisungen..."></textarea>
         </div>
 
         <!-- Driveway video section -->
         <div class="video-section">
-          <p class="section-title">Driveway Video <span class="required">*</span></p>
+          <p class="section-title">Einfahrtsvideo <span class="required">*</span></p>
           <div v-if="videoPreviewUrl" class="video-preview">
             <video :src="videoPreviewUrl" controls></video>
             <div class="row" style="gap:0.5rem;margin-top:0.5rem">
-              <button class="btn-ghost btn-sm" @click="rerecord()">Re-record</button>
-              <span class="text-sm text-muted" style="align-self:center">Video ready</span>
+              <button class="btn-ghost btn-sm" @click="rerecord()">Neu aufnehmen</button>
+              <span class="text-sm text-muted" style="align-self:center">Video bereit</span>
             </div>
           </div>
           <div v-else>
-            <p class="text-sm text-muted mb-2">Record a short video of the driveway path so the driver can navigate to the container location.</p>
+            <p class="text-sm text-muted mb-2">Nimm ein kurzes Video des Einfahrtsweges auf, damit der Fahrer den Containerstandort findet.</p>
             <button class="btn-warning btn-block" @click="openCamera()">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" style="display:inline;vertical-align:middle;margin-right:6px"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a1 1 0 011-1h9a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8z"/></svg>
-              Record Driveway Video
+              Einfahrtsvideo aufnehmen
             </button>
           </div>
         </div>
 
         <div class="row mt-3" style="gap:0.75rem">
-          <button class="btn-ghost btn-block" @click="emit('close')">Cancel</button>
+          <button class="btn-ghost btn-block" @click="emit('close')">Abbrechen</button>
           <button class="btn-primary btn-block" @click="save" :disabled="loading || !videoBlob">
-            {{ loading ? 'Ordering...' : 'Place Order' }}
+            {{ loading ? 'Wird bestellt...' : 'Bestellen' }}
           </button>
         </div>
       </div>
 
       <!-- Camera / recording view -->
       <div v-else>
-        <p class="text-sm text-muted mb-2">Film the path from the street to where the container should go. Keep it under 60 seconds.</p>
+        <p class="text-sm text-muted mb-2">Filme den Weg von der Straße zum geplanten Containerstandort. Bitte unter 60 Sekunden bleiben.</p>
 
         <div class="camera-area">
           <video ref="videoEl" autoplay muted playsinline class="camera-feed"></video>
           <div v-if="!stream && !videoPreviewUrl" class="camera-placeholder">
-            <span>Starting camera...</span>
+            <span>Kamera wird gestartet...</span>
           </div>
           <div v-if="recording" class="rec-badge">&#9679; REC</div>
         </div>
 
         <div v-if="!videoPreviewUrl" class="row mt-2" style="gap:0.75rem;justify-content:center">
           <button v-if="!recording" class="btn-danger btn-lg" @click="startRecording()">
-            &#9679; Start Recording
+            &#9679; Aufnahme starten
           </button>
           <button v-else class="btn-warning btn-lg" @click="stopRecording()">
-            &#9632; Stop
+            &#9632; Stopp
           </button>
         </div>
 
         <div v-if="videoPreviewUrl" class="mt-2">
           <video :src="videoPreviewUrl" controls class="preview-video"></video>
           <div class="row mt-2" style="gap:0.75rem">
-            <button class="btn-ghost btn-block" @click="rerecord()">Re-record</button>
-            <button class="btn-primary btn-block" @click="step = 'form'">Use This Video</button>
+            <button class="btn-ghost btn-block" @click="rerecord()">Neu aufnehmen</button>
+            <button class="btn-primary btn-block" @click="step = 'form'">Video verwenden</button>
           </div>
         </div>
 
-        <button v-if="!videoPreviewUrl && !recording" class="btn-ghost btn-block mt-2" @click="stopCamera(); step = 'form'">Back</button>
+        <button v-if="!videoPreviewUrl && !recording" class="btn-ghost btn-block mt-2" @click="stopCamera(); step = 'form'">Zurück</button>
       </div>
     </div>
   </div>

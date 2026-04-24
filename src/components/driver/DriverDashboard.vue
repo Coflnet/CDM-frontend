@@ -68,11 +68,11 @@ function statusBadge(s: string) {
   return m[s] ?? 'badge-gray'
 }
 function statusLabel(s: string) {
-  const m: Record<string, string> = { pending: 'Pending', driver_en_route: 'En Route', completed: 'Completed', cancelled: 'Cancelled' }
+  const m: Record<string, string> = { pending: 'Ausstehend', driver_en_route: 'Unterwegs', completed: 'Abgeschlossen', cancelled: 'Storniert' }
   return m[s] ?? s
 }
 function formatDateTime(d: string) {
-  return new Date(d).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  return new Date(d).toLocaleString('de-DE', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 function fillColor(f: number) {
   return f >= 80 ? '#e74c3c' : f >= 50 ? '#e67e22' : '#27ae60'
@@ -117,12 +117,12 @@ async function saveEta() {
       <div class="page">
         <div class="row-between mb-3">
           <div>
-            <h1>Driver Queue</h1>
-            <p class="text-sm text-muted">Driver</p>
+            <h1>Fahrerwarteschlange</h1>
+            <p class="text-sm text-muted">Fahrer</p>
           </div>
           <div class="stat-chip">
             <span class="chip-val">{{ queuePickups.length }}</span>
-            <span class="chip-label">Pending</span>
+            <span class="chip-label">Ausstehend</span>
           </div>
         </div>
 
@@ -130,14 +130,14 @@ async function saveEta() {
 
         <div v-else>
           <div class="tabs row mb-3">
-            <button :class="['tab', { active: activeTab === 'queue' }]" @click="activeTab = 'queue'">My Queue</button>
-            <button :class="['tab', { active: activeTab === 'all' }]" @click="activeTab = 'all'">All Pickups</button>
+            <button :class="['tab', { active: activeTab === 'queue' }]" @click="activeTab = 'queue'">Meine Aufträge</button>
+            <button :class="['tab', { active: activeTab === 'all' }]" @click="activeTab = 'all'">Alle Abholungen</button>
           </div>
 
           <div v-if="activeTab === 'queue'">
             <div v-if="queuePickups.length === 0" class="empty-state">
               <div class="icon">✅</div>
-              <p>Queue is clear. No pending pickups.</p>
+              <p>Warteschlange leer. Keine ausstehenden Abholungen.</p>
             </div>
             <div v-else class="stack">
               <div v-for="p in queuePickups" :key="p.id" class="card pickup-card">
@@ -164,29 +164,29 @@ async function saveEta() {
 
                 <div v-if="p.driver_eta" class="alert alert-warning mb-2" style="padding:0.5rem 0.75rem;font-size:0.82rem">
                   ETA: {{ formatDateTime(p.driver_eta) }}
-                  <a href="#" @click.prevent="etaPickupId = p.id; etaValue = new Date(p.driver_eta).toISOString().slice(0,16)" style="margin-left:0.5rem">Edit</a>
+                  <a href="#" @click.prevent="etaPickupId = p.id; etaValue = new Date(p.driver_eta).toISOString().slice(0,16)" style="margin-left:0.5rem">Bearbeiten</a>
                 </div>
 
                 <div v-if="etaPickupId === p.id" class="eta-edit mb-2">
                   <input type="datetime-local" v-model="etaValue" />
                   <div class="row mt-1" style="gap:0.5rem">
-                    <button class="btn-ghost btn-sm" @click="etaPickupId = null">Cancel</button>
-                    <button class="btn-primary btn-sm" @click="saveEta" :disabled="etaLoading">Save ETA</button>
+                    <button class="btn-ghost btn-sm" @click="etaPickupId = null">Abbrechen</button>
+                    <button class="btn-primary btn-sm" @click="saveEta" :disabled="etaLoading">ETA speichern</button>
                   </div>
                 </div>
 
                 <div class="action-row row" style="gap:0.5rem;flex-wrap:wrap">
                   <button v-if="p.driveway_video_url" class="btn-warning btn-sm" @click="videoModal = { url: p.driveway_video_url, siteName: p.site?.name }">
-                    ▶ Driveway Video
+                    ▶ Einfahrtsvideo
                   </button>
                   <button class="btn-ghost btn-sm" @click="openMaps(p)">
-                    🗺 Navigate
+                    &#128506; Navigation
                   </button>
                   <button v-if="p.status === 'pending'" class="btn-primary btn-sm" @click="startDriving(p)">
-                    Start Driving
+                    Fahrt starten
                   </button>
                   <button v-if="p.status === 'driver_en_route'" class="btn-success btn-sm" @click="markComplete(p)">
-                    Mark Complete
+                    Abgeschlossen
                   </button>
                 </div>
               </div>
@@ -214,11 +214,11 @@ async function saveEta() {
     <nav class="bottom-nav">
       <button class="bottom-nav-item" :class="{ active: activeTab === 'queue' }" @click="activeTab = 'queue'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-        My Queue
+        Meine Aufträge
       </button>
       <button class="bottom-nav-item" :class="{ active: activeTab === 'all' }" @click="activeTab = 'all'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-        All Pickups
+        Alle Abholungen
       </button>
     </nav>
 
