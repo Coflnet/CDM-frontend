@@ -6,12 +6,15 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 export type UserRole = 'customer' | 'driver'
+export type ContainerStatus = 'active' | 'scheduled_pickup' | 'picked_up' | 'ordered'
+export type PickupStatus = 'pending' | 'driver_en_route' | 'completed' | 'cancelled'
+export type OrderStatus = 'pending' | 'confirmed' | 'delivered' | 'cancelled'
 
 export interface Profile {
   id: string
   full_name: string
   role: UserRole
-  phone: string
+  phone: string | null
   created_at: string
 }
 
@@ -30,10 +33,10 @@ export interface Container {
   site_id: string
   container_type: string
   fill_state: number
-  status: 'active' | 'scheduled_pickup' | 'picked_up' | 'ordered'
-  delivered_at: string
+  status: ContainerStatus
+  delivered_at: string | null
   pickup_date: string | null
-  driveway_video_url: string
+  driveway_video_url: string | null
   created_at: string
 }
 
@@ -43,12 +46,12 @@ export interface Pickup {
   site_id: string
   customer_id: string
   scheduled_at: string
-  status: 'pending' | 'driver_en_route' | 'completed' | 'cancelled'
-  driveway_video_url: string
+  status: PickupStatus
+  driveway_video_url: string | null
   driver_id: string | null
   driver_eta: string | null
   driver_started_at: string | null
-  notes: string
+  notes: string | null
   created_at: string
 }
 
@@ -67,7 +70,7 @@ export interface ContainerOrder {
   site_id: string
   container_type: string
   quantity: number
-  notes: string
-  status: 'pending' | 'confirmed' | 'delivered' | 'cancelled'
+  notes: string | null
+  status: OrderStatus
   created_at: string
 }

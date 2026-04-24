@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../../supabase'
 import type { Container, Site, Pickup } from '../../supabase'
+import { fillColor, formatDateTime, PICKUP_STATUS_LABEL, PICKUP_STATUS_BADGE } from '../../utils'
 import ContainerCard from './ContainerCard.vue'
 import SchedulePickupModal from './SchedulePickupModal.vue'
 import UpdateFillModal from './UpdateFillModal.vue'
@@ -14,7 +15,6 @@ const pickups = ref<Pickup[]>([])
 const loading = ref(true)
 
 const activeTab = ref<'containers' | 'pickups' | 'sites'>('containers')
-
 const scheduleTarget = ref<{ container: Container; site: Site } | null>(null)
 const fillTarget = ref<Container | null>(null)
 const showOrder = ref(false)
@@ -35,42 +35,32 @@ async function load() {
 
 onMounted(load)
 
-function siteForContainer(c: Container) {
-  return sites.value.find(s => s.id === c.site_id) ?? ({ name: 'Unknown', id: '', address: '', customer_id: '', lat: null, lng: null, created_at: '' } as Site)
+function siteForContainer(c: Container): Site | undefined {
+  return sites.value.find(s => s.id === c.site_id)
 }
 
-const activeContainers = computed(() => containers.value.filter(c => c.status !== 'picked_up'))
+function containersForSite(siteId: string): Container[] {
+  return containers.value.filter(c => c.site_id === siteId && c.status !== 'picked_up')
+}
+
+function containerForPickup(p: Pickup): Container | undefined {
+  return containers.value.find(c => c.id === p.container_id)
+}
+
+function pickupSoon(scheduledAt: string): boolean {
+  const diff = new Date(scheduledAt).getTime() - Date.now()
+  return diff > 0 && diff < 1000 * 60 * 60 * 24 * 2
+}
+
+const activeContainers = computed(() =>
+  containers.value.filter(c => c.status !== 'picked_up')
+)
+
 const upcomingPickups = computed(() =>
   pickups.value
     .filter(p => p.status !== 'completed' && p.status !== 'cancelled')
     .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
 )
-
-function containersForSite(siteId: string) {
-  return containers.value.filter(c => c.site_id === siteId && c.status !== 'picked_up')
-}
-
-function pickupStatusLabel(s: string) {
-  const m: Record<string, string> = { pending: 'Ausstehend', driver_en_route: 'Fahrer unterwegs', completed: 'Abgeschlossen', cancelled: 'Storniert' }
-  return m[s] ?? s
-}
-function pickupStatusBadge(s: string) {
-  const m: Record<string, string> = { pending: 'badge-gray', driver_en_route: 'badge-blue', completed: 'badge-green', cancelled: 'badge-red' }
-  return m[s] ?? 'badge-gray'
-}
-function formatDateTime(d: string) {
-  return new Date(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-}
-function pickupSoon(d: string) {
-  const diff = new Date(d).getTime() - Date.now()
-  return diff > 0 && diff < 1000 * 60 * 60 * 24 * 2
-}
-function containerForPickup(p: Pickup) {
-  return containers.value.find(c => c.id === p.container_id)
-}
-function fillColor(f: number) {
-  return f >= 80 ? '#e74c3c' : f >= 50 ? '#e67e22' : '#27ae60'
-}
 </script>
 
 <template>
@@ -88,13 +78,12 @@ function fillColor(f: number) {
         <div v-if="loading" class="spinner"></div>
 
         <div v-else>
-          <!-- Summary chips -->
           <div class="summary-chips row mb-3">
             <div class="chip">
               <span class="chip-val">{{ activeContainers.length }}</span>
               <span class="chip-label">Aktiv</span>
             </div>
-            <div class="chip chip-warn" v-if="upcomingPickups.length">
+            <div v-if="upcomingPickups.length" class="chip chip-warn">
               <span class="chip-val">{{ upcomingPickups.length }}</span>
               <span class="chip-label">Geplant</span>
             </div>
@@ -104,7 +93,6 @@ function fillColor(f: number) {
             </div>
           </div>
 
-          <!-- Tabs -->
           <div class="tabs row mb-3">
             <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
             <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
@@ -119,15 +107,16 @@ function fillColor(f: number) {
               <button class="btn-primary mt-2" @click="showOrder = true">Container bestellen</button>
             </div>
             <div v-else class="stack">
-              <ContainerCard
-                v-for="c in activeContainers"
-                :key="c.id"
-                :container="c"
-                :site="siteForContainer(c)"
-                @schedule-pickup="scheduleTarget = { container: c, site: siteForContainer(c) }"
-                @update-fill="fillTarget = c"
-                @view-detail="fillTarget = c"
-              />
+              <template v-for="c in activeContainers" :key="c.id">
+                <ContainerCard
+                  v-if="siteForContainer(c)"
+                  :container="c"
+                  :site="siteForContainer(c)!"
+                  @schedule-pickup="scheduleTarget = { container: c, site: siteForContainer(c)! }"
+                  @update-fill="fillTarget = c"
+                  @view-detail="fillTarget = c"
+                />
+              </template>
             </div>
           </div>
 
@@ -138,13 +127,22 @@ function fillColor(f: number) {
               <p>Keine geplanten Abholungen.</p>
             </div>
             <div v-else class="stack">
-              <div v-for="p in upcomingPickups" :key="p.id" class="card" :class="{ 'warn-pulse': pickupSoon(p.scheduled_at) }">
+              <div
+                v-for="p in upcomingPickups"
+                :key="p.id"
+                class="card"
+                :class="{ 'warn-pulse': pickupSoon(p.scheduled_at) }"
+              >
                 <div class="row-between mb-1">
                   <div>
                     <h3>{{ containerForPickup(p)?.container_type ?? '?' }} Abholung</h3>
-                    <p class="text-sm text-muted">{{ siteForContainer(containerForPickup(p)!).name }}</p>
+                    <p class="text-sm text-muted">
+                      {{ siteForContainer(containerForPickup(p) ?? containers[0])?.name ?? '—' }}
+                    </p>
                   </div>
-                  <span class="badge" :class="pickupStatusBadge(p.status)">{{ pickupStatusLabel(p.status) }}</span>
+                  <span class="badge" :class="PICKUP_STATUS_BADGE[p.status]">
+                    {{ PICKUP_STATUS_LABEL[p.status] }}
+                  </span>
                 </div>
                 <p class="text-sm text-muted">{{ formatDateTime(p.scheduled_at) }}</p>
                 <div v-if="p.driver_eta" class="alert alert-info" style="margin-top:0.5rem">
@@ -153,7 +151,9 @@ function fillColor(f: number) {
                 <div v-if="pickupSoon(p.scheduled_at)" class="alert alert-warning" style="margin-top:0.5rem">
                   Abholung innerhalb von 48 Stunden!
                 </div>
-                <div v-if="p.notes" class="text-sm text-muted" style="margin-top:0.35rem">Notiz: {{ p.notes }}</div>
+                <div v-if="p.notes" class="text-sm text-muted" style="margin-top:0.35rem">
+                  Notiz: {{ p.notes }}
+                </div>
               </div>
             </div>
           </div>
@@ -204,7 +204,6 @@ function fillColor(f: number) {
       </div>
     </div>
 
-    <!-- Bottom nav -->
     <nav class="bottom-nav">
       <button class="bottom-nav-item" :class="{ active: activeTab === 'containers' }" @click="activeTab = 'containers'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10"/></svg>
@@ -224,7 +223,6 @@ function fillColor(f: number) {
       </button>
     </nav>
 
-    <!-- Modals -->
     <Transition name="fade">
       <SchedulePickupModal
         v-if="scheduleTarget"
@@ -302,8 +300,6 @@ function fillColor(f: number) {
   border-top: 1px solid var(--border-card);
   padding-top: 0.75rem;
 }
-.site-container-row {
-  align-items: center;
-}
+.site-container-row { align-items: center; }
 .mt-2 { margin-top: 1rem; }
 </style>

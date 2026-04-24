@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { supabase } from '../../supabase'
-import type { Pickup, Site, Container } from '../../supabase'
+import type { Pickup, Site, Container, PickupStatus } from '../../supabase'
+import { formatDateTime, PICKUP_STATUS_LABEL, PICKUP_STATUS_BADGE, fillColor } from '../../utils'
 import DrivewayVideoModal from './DrivewaVideoModal.vue'
 
 interface EnrichedPickup extends Pickup {
@@ -37,16 +38,18 @@ async function load() {
     supabase.from('profiles').select('id, full_name').in('id', customerIds),
   ])
 
-  const sitesMap = Object.fromEntries((sitesRes.data ?? []).map(s => [s.id, s]))
-  const containersMap = Object.fromEntries((containersRes.data ?? []).map(c => [c.id, c]))
-  const profilesMap = Object.fromEntries((profilesRes.data ?? []).map(p => [p.id, p.full_name]))
+  const sitesMap = Object.fromEntries((sitesRes.data ?? []).map(s => [s.id, s as Site]))
+  const containersMap = Object.fromEntries((containersRes.data ?? []).map(c => [c.id, c as Container]))
+  const profilesMap = Object.fromEntries((profilesRes.data ?? []).map(p => [p.id, p.full_name as string]))
 
-  pickups.value = pickupData.map(p => ({
-    ...p,
-    site: sitesMap[p.site_id],
-    container: containersMap[p.container_id],
-    customerName: profilesMap[p.customer_id] ?? 'Unknown',
-  })).filter(p => p.site && p.container)
+  pickups.value = pickupData
+    .map(p => ({
+      ...p,
+      site: sitesMap[p.site_id],
+      container: containersMap[p.container_id],
+      customerName: profilesMap[p.customer_id] ?? 'Unbekannt',
+    }))
+    .filter((p): p is EnrichedPickup => Boolean(p.site && p.container))
 
   loading.value = false
 }
@@ -63,51 +66,52 @@ const allPickups = computed(() =>
   [...pickups.value].sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
 )
 
-function statusBadge(s: string) {
-  const m: Record<string, string> = { pending: 'badge-gray', driver_en_route: 'badge-blue', completed: 'badge-green', cancelled: 'badge-red' }
-  return m[s] ?? 'badge-gray'
-}
-function statusLabel(s: string) {
-  const m: Record<string, string> = { pending: 'Ausstehend', driver_en_route: 'Unterwegs', completed: 'Abgeschlossen', cancelled: 'Storniert' }
-  return m[s] ?? s
-}
-function formatDateTime(d: string) {
-  return new Date(d).toLocaleString('de-DE', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-}
-function fillColor(f: number) {
-  return f >= 80 ? '#e74c3c' : f >= 50 ? '#e67e22' : '#27ae60'
+function pickupStatusLabel(s: PickupStatus): string {
+  return PICKUP_STATUS_LABEL[s] ?? s
 }
 
-function openMaps(p: EnrichedPickup) {
-  const q = encodeURIComponent(p.site.address || `${p.site.lat},${p.site.lng}`)
-  window.open(`https://maps.google.com/?q=${q}`, '_blank')
+function pickupStatusBadge(s: PickupStatus): string {
+  return PICKUP_STATUS_BADGE[s] ?? 'badge-gray'
 }
 
-async function startDriving(p: EnrichedPickup) {
+function openMaps(p: EnrichedPickup): void {
+  const query = p.site.address || (p.site.lat && p.site.lng ? `${p.site.lat},${p.site.lng}` : '')
+  if (!query) return
+  window.open(`https://maps.google.com/?q=${encodeURIComponent(query)}`, '_blank')
+}
+
+async function startDriving(p: EnrichedPickup): Promise<void> {
   const now = new Date()
-  const eta = new Date(now.getTime() + 30 * 60 * 1000) // default +30 min
+  const eta = new Date(now.getTime() + 30 * 60 * 1000)
   await supabase.from('pickups').update({
     status: 'driver_en_route',
-    driver_id: null,
     driver_started_at: now.toISOString(),
     driver_eta: eta.toISOString(),
   }).eq('id', p.id)
   load()
 }
 
-async function markComplete(p: EnrichedPickup) {
+async function markComplete(p: EnrichedPickup): Promise<void> {
   await supabase.from('pickups').update({ status: 'completed' }).eq('id', p.id)
   await supabase.from('containers').update({ status: 'picked_up' }).eq('id', p.container_id)
   load()
 }
 
-async function saveEta() {
+async function saveEta(): Promise<void> {
   if (!etaPickupId.value || !etaValue.value) return
   etaLoading.value = true
-  await supabase.from('pickups').update({ driver_eta: new Date(etaValue.value).toISOString() }).eq('id', etaPickupId.value)
+  await supabase
+    .from('pickups')
+    .update({ driver_eta: new Date(etaValue.value).toISOString() })
+    .eq('id', etaPickupId.value)
   etaPickupId.value = null
   etaLoading.value = false
   load()
+}
+
+function startEditEta(p: EnrichedPickup): void {
+  etaPickupId.value = p.id
+  etaValue.value = new Date(p.driver_eta!).toISOString().slice(0, 16)
 }
 </script>
 
@@ -136,35 +140,37 @@ async function saveEta() {
 
           <div v-if="activeTab === 'queue'">
             <div v-if="queuePickups.length === 0" class="empty-state">
-              <div class="icon">✅</div>
+              <div class="icon">&#10003;</div>
               <p>Warteschlange leer. Keine ausstehenden Abholungen.</p>
             </div>
             <div v-else class="stack">
               <div v-for="p in queuePickups" :key="p.id" class="card pickup-card">
                 <div class="row-between mb-1">
                   <div>
-                    <h3>{{ p.container?.container_type }} — {{ p.site?.name }}</h3>
+                    <h3>{{ p.container.container_type }} — {{ p.site.name }}</h3>
                     <p class="text-sm text-muted">{{ p.customerName }}</p>
                   </div>
-                  <span class="badge" :class="statusBadge(p.status)">{{ statusLabel(p.status) }}</span>
+                  <span class="badge" :class="pickupStatusBadge(p.status)">{{ pickupStatusLabel(p.status) }}</span>
                 </div>
 
                 <p class="text-sm text-muted mb-1">{{ formatDateTime(p.scheduled_at) }}</p>
 
                 <div class="fill-row row mb-2">
-                  <span class="text-sm text-muted" style="min-width:32px">{{ p.container?.fill_state }}%</span>
+                  <span class="text-sm text-muted" style="min-width:32px">{{ p.container.fill_state }}%</span>
                   <div class="fill-bar-wrap">
-                    <div class="fill-bar" :style="{ width: p.container?.fill_state + '%', background: fillColor(p.container?.fill_state ?? 0) }"></div>
+                    <div class="fill-bar" :style="{ width: p.container.fill_state + '%', background: fillColor(p.container.fill_state) }"></div>
                   </div>
                 </div>
 
-                <p class="text-sm text-muted mb-2">{{ p.site?.address }}</p>
+                <p class="text-sm text-muted mb-2">{{ p.site.address }}</p>
 
-                <div v-if="p.notes" class="alert alert-info mb-2" style="padding:0.5rem 0.75rem;font-size:0.82rem">{{ p.notes }}</div>
+                <div v-if="p.notes" class="alert alert-info mb-2" style="padding:0.5rem 0.75rem;font-size:0.82rem">
+                  {{ p.notes }}
+                </div>
 
                 <div v-if="p.driver_eta" class="alert alert-warning mb-2" style="padding:0.5rem 0.75rem;font-size:0.82rem">
                   ETA: {{ formatDateTime(p.driver_eta) }}
-                  <a href="#" @click.prevent="etaPickupId = p.id; etaValue = new Date(p.driver_eta).toISOString().slice(0,16)" style="margin-left:0.5rem">Bearbeiten</a>
+                  <a href="#" @click.prevent="startEditEta(p)" style="margin-left:0.5rem">Bearbeiten</a>
                 </div>
 
                 <div v-if="etaPickupId === p.id" class="eta-edit mb-2">
@@ -176,8 +182,12 @@ async function saveEta() {
                 </div>
 
                 <div class="action-row row" style="gap:0.5rem;flex-wrap:wrap">
-                  <button v-if="p.driveway_video_url" class="btn-warning btn-sm" @click="videoModal = { url: p.driveway_video_url, siteName: p.site?.name }">
-                    ▶ Einfahrtsvideo
+                  <button
+                    v-if="p.driveway_video_url"
+                    class="btn-warning btn-sm"
+                    @click="videoModal = { url: p.driveway_video_url!, siteName: p.site.name }"
+                  >
+                    &#9654; Einfahrtsvideo
                   </button>
                   <button class="btn-ghost btn-sm" @click="openMaps(p)">
                     &#128506; Navigation
@@ -198,12 +208,12 @@ async function saveEta() {
               <div v-for="p in allPickups" :key="p.id" class="card">
                 <div class="row-between">
                   <div>
-                    <h3>{{ p.container?.container_type }} — {{ p.site?.name }}</h3>
+                    <h3>{{ p.container.container_type }} — {{ p.site.name }}</h3>
                     <p class="text-sm text-muted">{{ formatDateTime(p.scheduled_at) }}</p>
                   </div>
-                  <span class="badge" :class="statusBadge(p.status)">{{ statusLabel(p.status) }}</span>
+                  <span class="badge" :class="pickupStatusBadge(p.status)">{{ pickupStatusLabel(p.status) }}</span>
                 </div>
-                <p class="text-sm text-muted mt-1">{{ p.site?.address }}</p>
+                <p class="text-sm text-muted mt-1">{{ p.site.address }}</p>
               </div>
             </div>
           </div>

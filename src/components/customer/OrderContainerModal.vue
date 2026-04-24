@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted } from 'vue'
 import { supabase } from '../../supabase'
 import type { Site, ContainerOrder } from '../../supabase'
+import { useVideoRecorder } from '../../composables/useVideoRecorder'
 
 const props = defineProps<{ sites: Site[] }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'ordered'): void }>()
@@ -14,17 +15,11 @@ const error = ref('')
 const loading = ref(false)
 const pastOrders = ref<ContainerOrder[]>([])
 
-// Video state
-const step = ref<'form' | 'video'>('form')
-const recording = ref(false)
-const mediaRecorder = ref<MediaRecorder | null>(null)
-const videoBlob = ref<Blob | null>(null)
-const videoPreviewUrl = ref('')
-const videoEl = ref<HTMLVideoElement | null>(null)
-const stream = ref<MediaStream | null>(null)
-const chunks: BlobPart[] = []
-
 const containerTypes = ['10yd', '15yd', '20yd', '30yd', '40yd']
+
+const recorder = useVideoRecorder('driveway-videos')
+const { step, recording, videoBlob, videoPreviewUrl, stream } = recorder
+const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = recorder
 
 onMounted(async () => {
   const { data } = await supabase
@@ -35,93 +30,42 @@ onMounted(async () => {
   pastOrders.value = data ?? []
 })
 
-function reorder(order: ContainerOrder) {
+function reorderFrom(order: ContainerOrder) {
   siteId.value = order.site_id
   containerType.value = order.container_type
   quantity.value = order.quantity
-  notes.value = order.notes
+  notes.value = order.notes ?? ''
 }
 
-async function openCamera() {
-  step.value = 'video'
-  await nextTick()
-  try {
-    stream.value = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
-    await nextTick()
-    if (videoEl.value) {
-      videoEl.value.srcObject = stream.value
-      videoEl.value.play()
-    }
-  } catch (e: any) {
-    error.value = 'Kamerazugriff verweigert: ' + (e as Error).message
-    step.value = 'form'
-  }
-}
-
-function startRecording() {
-  chunks.length = 0
-  const mr = new MediaRecorder(stream.value!, { mimeType: 'video/webm' })
-  mediaRecorder.value = mr
-  mr.ondataavailable = (e) => chunks.push(e.data)
-  mr.onstop = () => {
-    const blob = new Blob(chunks, { type: 'video/webm' })
-    videoBlob.value = blob
-    videoPreviewUrl.value = URL.createObjectURL(blob)
-    stream.value?.getTracks().forEach(t => t.stop())
-    stream.value = null
-  }
-  mr.start()
-  recording.value = true
-}
-
-function stopRecording() {
-  mediaRecorder.value?.stop()
-  recording.value = false
-}
-
-function rerecord() {
-  videoPreviewUrl.value = ''
-  videoBlob.value = null
-  nextTick(() => openCamera())
-}
-
-function stopCamera() {
-  stream.value?.getTracks().forEach(t => t.stop())
-  stream.value = null
-}
-
-async function uploadVideo(siteIdVal: string): Promise<string> {
+async function uploadVideo(): Promise<string> {
   if (!videoBlob.value) return ''
-  const fileName = `driveway-${siteIdVal}-${Date.now()}.webm`
+  const fileName = `driveway-${siteId.value}-${Date.now()}.webm`
   const { error: uploadError } = await supabase.storage
     .from('driveway-videos')
     .upload(fileName, videoBlob.value, { contentType: 'video/webm', upsert: true })
   if (uploadError) throw uploadError
-  const { data } = supabase.storage.from('driveway-videos').getPublicUrl(fileName)
-  return data.publicUrl
+  return supabase.storage.from('driveway-videos').getPublicUrl(fileName).data.publicUrl
 }
 
 async function save() {
-  if (!siteId.value) { error.value = 'Bitte wähle einen Standort aus.'; return }
+  const site = props.sites.find(s => s.id === siteId.value)
+  if (!site) { error.value = 'Bitte wähle einen Standort aus.'; return }
   if (!videoBlob.value) { error.value = 'Bitte nimm vor der Bestellung ein Einfahrtsvideo auf.'; return }
   error.value = ''
   loading.value = true
   try {
-    const site = props.sites.find(s => s.id === siteId.value)!
-    const videoUrl = await uploadVideo(siteId.value)
+    const videoUrl = await uploadVideo()
 
-    // Create the order record
     const { error: orderErr } = await supabase.from('container_orders').insert({
       customer_id: site.customer_id,
       site_id: siteId.value,
       container_type: containerType.value,
       quantity: quantity.value,
-      notes: notes.value,
+      notes: notes.value || null,
       status: 'pending',
     })
     if (orderErr) throw orderErr
 
-    // Create actual container rows so they appear on the containers page
     const containerInserts = Array.from({ length: quantity.value }, () => ({
       site_id: siteId.value,
       container_type: containerType.value,
@@ -133,8 +77,8 @@ async function save() {
     if (containerErr) throw containerErr
 
     emit('ordered')
-  } catch (e: any) {
-    error.value = e.message
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Unbekannter Fehler'
   } finally {
     loading.value = false
   }
@@ -142,7 +86,7 @@ async function save() {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <div class="modal-overlay" @click.self="stopCamera(); emit('close')">
     <div class="modal">
       <div class="modal-header">
         <h2>{{ step === 'video' ? 'Einfahrtsvideo aufnehmen' : 'Neuen Container bestellen' }}</h2>
@@ -159,9 +103,9 @@ async function save() {
             <div v-for="o in pastOrders" :key="o.id" class="row-between card" style="padding:0.75rem">
               <div>
                 <span class="text-sm font-bold">{{ o.quantity }}x {{ o.container_type }}</span>
-                <p class="text-sm text-muted">{{ sites.find(s => s.id === o.site_id)?.name ?? 'Unknown site' }}</p>
+                <p class="text-sm text-muted">{{ sites.find(s => s.id === o.site_id)?.name ?? '—' }}</p>
               </div>
-              <button class="btn-ghost btn-sm" @click="reorder(o)">Wiederholen</button>
+              <button class="btn-ghost btn-sm" @click="reorderFrom(o)">Wiederholen</button>
             </div>
           </div>
           <hr class="divider" />
@@ -188,7 +132,6 @@ async function save() {
           <textarea v-model="notes" rows="2" placeholder="Besondere Anweisungen..."></textarea>
         </div>
 
-        <!-- Driveway video section -->
         <div class="video-section">
           <p class="section-title">Einfahrtsvideo <span class="required">*</span></p>
           <div v-if="videoPreviewUrl" class="video-preview">
@@ -199,9 +142,13 @@ async function save() {
             </div>
           </div>
           <div v-else>
-            <p class="text-sm text-muted mb-2">Nimm ein kurzes Video des Einfahrtsweges auf, damit der Fahrer den Containerstandort findet.</p>
+            <p class="text-sm text-muted mb-2">
+              Nimm ein kurzes Video des Einfahrtsweges auf, damit der Fahrer den Containerstandort findet.
+            </p>
             <button class="btn-warning btn-block" @click="openCamera()">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" style="display:inline;vertical-align:middle;margin-right:6px"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a1 1 0 011-1h9a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8z"/></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" style="display:inline;vertical-align:middle;margin-right:6px">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a1 1 0 011-1h9a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8z"/>
+              </svg>
               Einfahrtsvideo aufnehmen
             </button>
           </div>
@@ -215,12 +162,14 @@ async function save() {
         </div>
       </div>
 
-      <!-- Camera / recording view -->
+      <!-- Camera view -->
       <div v-else>
-        <p class="text-sm text-muted mb-2">Filme den Weg von der Straße zum geplanten Containerstandort. Bitte unter 60 Sekunden bleiben.</p>
+        <p class="text-sm text-muted mb-2">
+          Filme den Weg von der Straße zum geplanten Containerstandort. Bitte unter 60 Sekunden bleiben.
+        </p>
 
         <div class="camera-area">
-          <video ref="videoEl" autoplay muted playsinline class="camera-feed"></video>
+          <video :ref="(el) => { recorder.videoEl.value = el as HTMLVideoElement | null }" autoplay muted playsinline class="camera-feed"></video>
           <div v-if="!stream && !videoPreviewUrl" class="camera-placeholder">
             <span>Kamera wird gestartet...</span>
           </div>
@@ -244,7 +193,9 @@ async function save() {
           </div>
         </div>
 
-        <button v-if="!videoPreviewUrl && !recording" class="btn-ghost btn-block mt-2" @click="stopCamera(); step = 'form'">Zurück</button>
+        <button v-if="!videoPreviewUrl && !recording" class="btn-ghost btn-block mt-2" @click="stopCamera(); step = 'form'">
+          Zurück
+        </button>
       </div>
     </div>
   </div>
@@ -253,11 +204,9 @@ async function save() {
 <style scoped>
 .font-bold { font-weight: 700; }
 .required { color: #e74c3c; }
-
 .video-section { margin-top: 0.75rem; }
 .video-preview video,
 .preview-video { width: 100%; max-height: 220px; object-fit: cover; border-radius: var(--radius-sm); }
-
 .camera-area {
   position: relative;
   background: #000;
