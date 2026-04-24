@@ -4,6 +4,7 @@ import { supabase } from '../../supabase'
 import type { Container, Site, Pickup } from '../../supabase'
 import { fillColor, formatDateTime, PICKUP_STATUS_LABEL, PICKUP_STATUS_BADGE } from '../../utils'
 import ContainerCard from './ContainerCard.vue'
+import ContainerDetailModal from './ContainerDetailModal.vue'
 import SchedulePickupModal from './SchedulePickupModal.vue'
 import UpdateFillModal from './UpdateFillModal.vue'
 import OrderContainerModal from './OrderContainerModal.vue'
@@ -15,6 +16,7 @@ const pickups = ref<Pickup[]>([])
 const loading = ref(true)
 
 const activeTab = ref<'containers' | 'pickups' | 'sites'>('containers')
+const detailTarget = ref<{ container: Container; site: Site } | null>(null)
 const scheduleTarget = ref<{ container: Container; site: Site } | null>(null)
 const fillTarget = ref<Container | null>(null)
 const showOrder = ref(false)
@@ -30,6 +32,11 @@ async function load() {
   sites.value = sitesRes.data ?? []
   containers.value = containersRes.data ?? []
   pickups.value = pickupsRes.data ?? []
+
+  // Default to sites view when customer has more than one active container
+  const active = containers.value.filter(c => c.status !== 'picked_up')
+  if (active.length > 1) activeTab.value = 'sites'
+
   loading.value = false
 }
 
@@ -50,6 +57,10 @@ function containerForPickup(p: Pickup): Container | undefined {
 function pickupSoon(scheduledAt: string): boolean {
   const diff = new Date(scheduledAt).getTime() - Date.now()
   return diff > 0 && diff < 1000 * 60 * 60 * 24 * 2
+}
+
+function openDetail(container: Container, site: Site) {
+  detailTarget.value = { container, site }
 }
 
 const activeContainers = computed(() =>
@@ -114,7 +125,7 @@ const upcomingPickups = computed(() =>
                   :site="siteForContainer(c)!"
                   @schedule-pickup="scheduleTarget = { container: c, site: siteForContainer(c)! }"
                   @update-fill="fillTarget = c"
-                  @view-detail="fillTarget = c"
+                  @view-detail="openDetail(c, siteForContainer(c)!)"
                 />
               </template>
             </div>
@@ -182,15 +193,27 @@ const upcomingPickups = computed(() =>
                 </div>
 
                 <div v-if="containersForSite(s.id).length" class="site-containers">
-                  <div v-for="c in containersForSite(s.id)" :key="c.id" class="site-container-row row-between">
-                    <span class="text-sm">{{ c.container_type }}</span>
+                  <div
+                    v-for="c in containersForSite(s.id)"
+                    :key="c.id"
+                    class="site-container-row row-between clickable"
+                    @click="openDetail(c, s)"
+                  >
+                    <div class="container-row-left">
+                      <span class="text-sm font-semibold">{{ c.container_type }}</span>
+                    </div>
                     <div class="fill-inline row" style="gap:0.5rem;flex:1;margin:0 0.75rem">
                       <div class="fill-bar-wrap" style="flex:1">
                         <div class="fill-bar" :style="{ width: c.fill_state + '%', background: fillColor(c.fill_state) }"></div>
                       </div>
                       <span class="text-sm text-muted" style="min-width:2.5rem;text-align:right">{{ c.fill_state }}%</span>
                     </div>
-                    <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Abholen</button>
+                    <div class="row" style="gap:0.5rem" @click.stop>
+                      <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Abholen</button>
+                      <button class="btn-ghost btn-sm icon-btn" @click="openDetail(c, s)" title="Details">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -223,6 +246,16 @@ const upcomingPickups = computed(() =>
       </button>
     </nav>
 
+    <Transition name="fade">
+      <ContainerDetailModal
+        v-if="detailTarget"
+        :container="detailTarget.container"
+        :site="detailTarget.site"
+        @close="detailTarget = null"
+        @schedule-pickup="scheduleTarget = detailTarget; detailTarget = null"
+        @update-fill="fillTarget = detailTarget!.container; detailTarget = null"
+      />
+    </Transition>
     <Transition name="fade">
       <SchedulePickupModal
         v-if="scheduleTarget"
@@ -301,5 +334,15 @@ const upcomingPickups = computed(() =>
   padding-top: 0.75rem;
 }
 .site-container-row { align-items: center; }
+.clickable {
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.5rem;
+  margin: 0 -0.5rem;
+  transition: background 0.12s;
+}
+.clickable:hover { background: rgba(255,255,255,0.04); }
+.font-semibold { font-weight: 600; }
+.icon-btn { padding: 0.3rem 0.4rem; }
 .mt-2 { margin-top: 1rem; }
 </style>
