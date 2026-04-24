@@ -93,7 +93,7 @@ const upcomingPickups = computed(() =>
             </div>
           </div>
 
-          <div class="tabs row mb-3">
+          <div class="tabs row mb-3" style="margin-top:1rem">
             <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
             <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
             <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Standorte</button>
