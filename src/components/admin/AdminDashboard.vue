@@ -3,6 +3,7 @@ import { ref, onMounted, computed } from 'vue'
 import { adminApi, invoiceApi, markContainerRetrieved } from '../../api'
 import type { Order, Invoice, ErrorLog, Driver, Site, CustomerContainerView } from '../../api'
 import { WASTE_TYPE_LABEL, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, formatDate, formatDateTime } from '../../utils'
+import WeightUploadModal from './WeightUploadModal.vue'
 
 const activeTab = ref<'orders' | 'containers' | 'invoices' | 'logs'>('orders')
 
@@ -17,6 +18,7 @@ const error = ref('')
 
 const assigningOrderId = ref<string | null>(null)
 const assignDriverId = ref('')
+const showWeightUpload = ref(false)
 
 async function load() {
   loading.value = true
@@ -206,28 +208,43 @@ function logLevelClass(level: ErrorLog['level']) {
             </div>
           </div>
 
-          <div v-if="activeTab === 'invoices'" class="stack">
+          <div v-if="activeTab === 'invoices'">
+            <div class="row-between mb-2">
+              <p class="section-title" style="margin:0">Rechnungen</p>
+              <button class="btn-warning btn-sm" @click="showWeightUpload = true">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14" style="display:inline;vertical-align:middle;margin-right:4px"><path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                Gewichte hochladen
+              </button>
+            </div>
             <div v-if="allInvoices.length === 0" class="empty-state">
               <div class="icon">&#129534;</div>
               <p>Keine Rechnungen.</p>
             </div>
-            <div v-for="inv in allInvoices" :key="inv.invoiceId" class="card invoice-card">
-              <div class="row-between mb-1">
-                <div class="card-title-wrap">
-                  <h3 class="card-h3">{{ WASTE_TYPE_LABEL[inv.wasteType] }} — {{ inv.siteName ?? inv.siteId }}</h3>
-                  <p class="text-sm text-muted">{{ formatDate(inv.issuedAt) }}</p>
+            <div v-else class="stack">
+              <div v-for="inv in allInvoices" :key="inv.invoiceId" class="card invoice-card">
+                <div class="row-between mb-1">
+                  <div class="card-title-wrap">
+                    <h3 class="card-h3">{{ WASTE_TYPE_LABEL[inv.wasteType] }} — {{ inv.siteName ?? inv.siteId }}</h3>
+                    <p class="text-sm text-muted">{{ formatDate(inv.issuedAt) }}</p>
+                  </div>
+                  <span class="badge badge-shrink" :class="inv.status === 'paid' ? 'badge-green' : 'badge-orange'">
+                    {{ inv.status === 'paid' ? 'Bezahlt' : 'Offen' }}
+                  </span>
                 </div>
-                <span class="badge badge-shrink" :class="inv.status === 'paid' ? 'badge-green' : 'badge-orange'">
-                  {{ inv.status === 'paid' ? 'Bezahlt' : 'Offen' }}
-                </span>
+                <div class="invoice-amount">{{ inv.amount.toFixed(2) }} {{ inv.currency }}</div>
+                <div v-if="inv.weightKg" class="weight-row text-sm text-muted mb-1">
+                  <span>{{ inv.weightKg.toLocaleString('de-DE') }} kg</span>
+                  <span class="weight-sep">·</span>
+                  <span>{{ inv.pricePerKg?.toFixed(4) }} €/kg</span>
+                </div>
+                <div v-else class="text-sm text-muted mb-1">Kein Gewicht hinterlegt</div>
+                <div class="text-sm text-muted mb-2">{{ inv.invoiceId }}</div>
+                <button
+                  v-if="inv.status !== 'paid'"
+                  class="btn-success btn-sm"
+                  @click="doMarkPaid(inv.invoiceId)"
+                >Als bezahlt markieren</button>
               </div>
-              <div class="invoice-amount">{{ inv.amount.toFixed(2) }} {{ inv.currency }}</div>
-              <div class="text-sm text-muted mb-2">Rechnung {{ inv.invoiceId }}</div>
-              <button
-                v-if="inv.status !== 'paid'"
-                class="btn-success btn-sm"
-                @click="doMarkPaid(inv.invoiceId)"
-              >Als bezahlt markieren</button>
             </div>
           </div>
 
@@ -248,6 +265,15 @@ function logLevelClass(level: ErrorLog['level']) {
         </div>
       </div>
     </div>
+
+    <Transition name="fade">
+      <WeightUploadModal
+        v-if="showWeightUpload"
+        :invoices="allInvoices"
+        @close="showWeightUpload = false"
+        @applied="showWeightUpload = false; load()"
+      />
+    </Transition>
 
     <nav class="bottom-nav">
       <button class="bottom-nav-item" :class="{ active: activeTab === 'orders' }" @click="activeTab = 'orders'">
@@ -323,6 +349,8 @@ function logLevelClass(level: ErrorLog['level']) {
   color: var(--text-primary);
   margin-bottom: 0.2rem;
 }
+.weight-row { display: flex; align-items: center; gap: 0.35rem; }
+.weight-sep { color: var(--border-card); }
 .log-message {
   font-size: 0.88rem;
   color: var(--text-primary);

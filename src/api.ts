@@ -128,6 +128,8 @@ export interface Invoice {
   amount: number
   currency: string
   status: 'unpaid' | 'paid'
+  weightKg: number | null
+  pricePerKg: number | null
 }
 
 export interface ErrorLog {
@@ -686,6 +688,15 @@ export const invoiceApi = {
     return delay([...invoices].reverse())
   },
 
+  applyTransportWeight(invoiceId: string, weightKg: number, pricePerKg: number): Promise<Invoice> {
+    const inv = invoices.find(i => i.invoiceId === invoiceId)
+    if (!inv) return Promise.reject(new Error('Invoice not found'))
+    inv.weightKg = weightKg
+    inv.pricePerKg = pricePerKg
+    inv.amount = Math.round(weightKg * pricePerKg * 100) / 100
+    return delay({ ...inv })
+  },
+
   markPaid(invoiceId: string): Promise<Invoice> {
     const inv = invoices.find(i => i.invoiceId === invoiceId)
     if (!inv) return Promise.reject(new Error('Invoice not found'))
@@ -724,6 +735,8 @@ export function markContainerRetrieved(bookingId: string): void {
       amount: BILLING_RATES[c.wasteType],
       currency: 'EUR',
       status: 'unpaid',
+      weightKg: null,
+      pricePerKg: null,
     })
   }
 

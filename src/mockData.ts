@@ -227,6 +227,8 @@ export const MOCK_INVOICES: Invoice[] = [
     amount: 180,
     currency: 'EUR',
     status: 'paid',
+    weightKg: 1200,
+    pricePerKg: 0.15,
   },
 ]
 
