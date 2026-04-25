@@ -108,15 +108,54 @@ async function ensureNotificationPermission(): Promise<boolean> {
 async function sendNavigationNotification(t: DriverTrip): Promise<void> {
   try {
     const destination = t.siteName ?? t.siteAddress ?? 'the destination'
-    const notification = new Notification('CDM demo notification', {
+    const title = 'CDM demo notification'
+    const options: NotificationOptions = {
       body: `${t.tripKind === 'pickup' ? 'Pickup' : 'Delivery'} navigation started for ${destination}.`,
       tag: `cdm-navigation-${t.bookingId}`,
-    })
-    notification.onclick = () => window.focus()
+    }
 
+    // Prefer showing the notification via an active ServiceWorker registration
+    if ('serviceWorker' in navigator) {
+      try {
+        const reg = (await navigator.serviceWorker.getRegistration()) ?? (await navigator.serviceWorker.ready)
+        if (reg && typeof reg.showNotification === 'function') {
+          await reg.showNotification(title, options)
+          notificationBanner.value = {
+            tone: 'info',
+            message: `Demo notification (via ServiceWorker) sent for ${destination}.`,
+          }
+          return
+        }
+      } catch (swError) {
+        // ignore and fall back
+        // eslint-disable-next-line no-console
+        console.warn('ServiceWorker notification failed', swError)
+      }
+    }
+
+    // If no service worker is available, try the Notification API if permitted.
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      try {
+        // Some environments throw "illegal constructor" when calling Notification directly.
+        // Guard and ignore failures to avoid uncaught exceptions.
+        // @ts-ignore
+        new (Notification as any)(title, options)
+        notificationBanner.value = {
+          tone: 'info',
+          message: `Demo notification sent for ${destination}.`,
+        }
+        return
+      } catch (err) {
+        // fall through to in-app fallback
+        // eslint-disable-next-line no-console
+        console.warn('Notification constructor unavailable', err)
+      }
+    }
+
+    // Final fallback: in-app banner so the user still gets feedback.
     notificationBanner.value = {
       tone: 'info',
-      message: `Demo notification sent for ${destination}.`,
+      message: `Demo notification for ${destination} (in-app fallback).`,
     }
   } catch (error) {
     notificationBanner.value = {
