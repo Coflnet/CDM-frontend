@@ -21,18 +21,29 @@ function switchView(view: AuthView) {
   authError.value = ''
 }
 
-function mapFirebaseError(msg: string, isSignup: boolean): string {
-  if (msg.includes('invalid-credential') || msg.includes('wrong-password') || msg.includes('user-not-found'))
+function mapFirebaseError(e: unknown, isSignup: boolean): string {
+  // Firebase errors carry a .code like "auth/email-already-in-use"
+  const code = (e as { code?: string })?.code ?? ''
+  const msg = e instanceof Error ? e.message : String(e)
+  const haystack = `${code} ${msg}`.toLowerCase()
+
+  if (haystack.includes('invalid-credential') || haystack.includes('wrong-password') || haystack.includes('user-not-found'))
     return 'E-Mail oder Passwort falsch.'
-  if (msg.includes('email-already-in-use'))
+  if (haystack.includes('email-already-in-use'))
     return 'Diese E-Mail-Adresse ist bereits registriert.'
-  if (msg.includes('invalid-email'))
+  if (haystack.includes('invalid-email'))
     return 'Ungültige E-Mail-Adresse.'
-  if (msg.includes('weak-password'))
+  if (haystack.includes('weak-password'))
     return 'Passwort muss mindestens 6 Zeichen lang sein.'
-  if (msg.includes('too-many-requests'))
+  if (haystack.includes('too-many-requests'))
     return 'Zu viele Versuche. Bitte später nochmal versuchen.'
-  return isSignup ? 'Registrierung fehlgeschlagen. Bitte erneut versuchen.' : 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
+  if (haystack.includes('network-request-failed') || haystack.includes('network'))
+    return 'Netzwerkfehler. Bitte Verbindung prüfen.'
+  if (haystack.includes('operation-not-allowed'))
+    return 'Registrierung ist derzeit nicht aktiviert. Bitte den Administrator kontaktieren.'
+  // expose the raw code in dev so it is easy to diagnose new cases
+  const detail = code || msg
+  return isSignup ? `Registrierung fehlgeschlagen (${detail}).` : `Anmeldung fehlgeschlagen (${detail}).`
 }
 
 async function submitLogin() {
@@ -47,7 +58,7 @@ async function submitLogin() {
     emailInput.value = ''
     passwordInput.value = ''
   } catch (e: unknown) {
-    authError.value = mapFirebaseError(e instanceof Error ? e.message : String(e), false)
+    authError.value = mapFirebaseError(e, false)
   } finally {
     authLoading.value = false
   }
@@ -74,7 +85,7 @@ async function submitSignup() {
     passwordInput.value = ''
     confirmPasswordInput.value = ''
   } catch (e: unknown) {
-    authError.value = mapFirebaseError(e instanceof Error ? e.message : String(e), true)
+    authError.value = mapFirebaseError(e, true)
   } finally {
     authLoading.value = false
   }
