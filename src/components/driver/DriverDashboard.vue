@@ -106,7 +106,7 @@ function openVideo(t: DriverTrip): void {
                   Container: {{ t.containerNumber }}
                 </div>
 
-                <div class="action-row row" style="gap:0.5rem;flex-wrap:wrap">
+                <div class="action-row" style="display:flex;gap:0.5rem;flex-wrap:wrap">
                   <button
                     v-if="latestAnfahrt(t.siteId)"
                     class="btn-warning btn-sm"
@@ -188,4 +188,5 @@ function openVideo(t: DriverTrip): void {
 }
 .tab.active { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-card); }
 .mt-1 { margin-top: 0.5rem; }
+.action-row button { flex: 1; min-width: 100px; justify-content: center; }
 </style>

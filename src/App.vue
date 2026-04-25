@@ -242,8 +242,8 @@ async function submitSignup() {
           <span class="logo-accent"></span>
           CDM &mdash; {{ authState.role === 'driver' ? 'Fahreransicht' : 'Kundenportal' }}
         </div>
-        <div class="row" style="gap:0.5rem">
-          <button class="btn-ghost btn-sm" @click="authState.role = null">Rolle wechseln</button>
+        <div class="header-actions">
+          <button class="btn-ghost btn-sm" @click="authState.role = null">Rolle</button>
           <button class="btn-ghost btn-sm" @click="logout">Abmelden</button>
         </div>
       </header>
@@ -265,7 +265,7 @@ async function submitSignup() {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 1rem 0.875rem;
   background: var(--bg-base);
 }
 
@@ -275,7 +275,7 @@ async function submitSignup() {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
-  padding: 2.25rem 2rem;
+  padding: 2rem 1.25rem;
   box-shadow: var(--shadow);
   text-align: center;
 }
@@ -476,5 +476,11 @@ async function submitSignup() {
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 </style>

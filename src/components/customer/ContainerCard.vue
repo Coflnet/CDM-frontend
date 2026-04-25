@@ -53,7 +53,7 @@ const pickupSoon = computed(() => {
 
     <hr class="divider" />
 
-    <div class="row" style="gap:0.5rem;flex-wrap:wrap">
+    <div class="card-actions">
       <button class="btn-primary btn-sm" @click="emit('schedule-pickup')">Abholung planen</button>
       <button class="btn-ghost btn-sm" @click="emit('update-fill')">Füllstand</button>
       <button class="btn-ghost btn-sm" @click="emit('view-detail')">Details</button>
@@ -65,4 +65,10 @@ const pickupSoon = computed(() => {
 .container-card { transition: border-color 0.2s; }
 .fill-row { gap: 0.6rem; }
 .text-danger { color: #e74c3c; }
+.card-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.card-actions button { flex: 1; min-width: 70px; text-align: center; justify-content: center; }
 </style>

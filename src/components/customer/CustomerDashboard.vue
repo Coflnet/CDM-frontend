@@ -178,23 +178,23 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
                   <div
                     v-for="c in containersForSite(s.siteId)"
                     :key="c.bookingId"
-                    class="site-container-row row-between clickable"
+                    class="site-container-row clickable"
                     @click="openDetail(c, s)"
                   >
-                    <div class="container-row-left">
+                    <div class="sc-top row-between">
                       <span class="text-sm font-semibold">{{ WASTE_TYPE_LABEL[c.wasteType] }}</span>
+                      <div class="row" style="gap:0.4rem" @click.stop>
+                        <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Abholen</button>
+                        <button class="btn-ghost btn-sm icon-btn" @click="openDetail(c, s)" title="Details">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                        </button>
+                      </div>
                     </div>
-                    <div class="fill-inline row" style="gap:0.5rem;flex:1;margin:0 0.75rem">
+                    <div class="sc-fill row" style="gap:0.5rem;margin-top:0.35rem">
                       <div class="fill-bar-wrap" style="flex:1">
                         <div class="fill-bar" :style="{ width: fillPct(c) + '%', background: fillColor(fillPct(c)) }"></div>
                       </div>
-                      <span class="text-sm text-muted" style="min-width:2.5rem;text-align:right">{{ fillPct(c) }}%</span>
-                    </div>
-                    <div class="row" style="gap:0.5rem" @click.stop>
-                      <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Abholen</button>
-                      <button class="btn-ghost btn-sm icon-btn" @click="openDetail(c, s)" title="Details">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="14" height="14"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-                      </button>
+                      <span class="text-sm text-muted" style="min-width:2rem;text-align:right">{{ fillPct(c) }}%</span>
                     </div>
                   </div>
                 </div>
@@ -274,17 +274,17 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
 </template>
 
 <style scoped>
-.dash-greeting { font-size: 1.5rem; }
-.summary-chips { gap: 0.75rem; flex-wrap: wrap; }
+.dash-greeting { font-size: 1.25rem; }
+.summary-chips { gap: 0.6rem; flex-wrap: wrap; }
 .chip {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-sm);
-  padding: 0.5rem 1rem;
+  padding: 0.45rem 0.75rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 72px;
+  min-width: 60px;
 }
 .chip-warn { border-color: rgba(230,126,34,0.4); }
 .chip-val { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
@@ -315,7 +315,9 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
   border-top: 1px solid var(--border-card);
   padding-top: 0.75rem;
 }
-.site-container-row { align-items: center; }
+.site-container-row { }
+.sc-top { align-items: center; }
+.sc-fill { align-items: center; }
 .clickable {
   cursor: pointer;
   border-radius: var(--radius-sm);

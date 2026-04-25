@@ -105,7 +105,7 @@ const latestAnfahrt = computed(() => anfahrten.value[0] ?? null)
       </div>
 
       <!-- Actions -->
-      <div class="row" style="gap:0.75rem;margin-top:1rem">
+      <div class="action-row">
         <button class="btn-ghost btn-block" @click="emit('update-fill')">Füllstand aktualisieren</button>
         <button class="btn-primary btn-block" @click="emit('schedule-pickup')">Abholung planen</button>
       </div>
@@ -150,4 +150,11 @@ const latestAnfahrt = computed(() => anfahrten.value[0] ?? null)
   margin: 0.5rem 0;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.action-row {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+.action-row .btn-block { flex: 1; min-width: 120px; }
 </style>
