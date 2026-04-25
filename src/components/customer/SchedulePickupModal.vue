@@ -1,84 +1,49 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { supabase } from '../../supabase'
-import type { Container, Site, Pickup } from '../../supabase'
+import { containersApi, sitesApi } from '../../api'
+import type { CustomerContainerView, Site } from '../../api'
 import { useVideoRecorder } from '../../composables/useVideoRecorder'
+import { WASTE_TYPE_LABEL } from '../../utils'
 
-const props = defineProps<{ container: Container; site: Site }>()
-const emit = defineEmits<{ (e: 'close'): void; (e: 'saved', pickup: Pickup): void }>()
+const props = defineProps<{ container: CustomerContainerView; site: Site }>()
+const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()
 
-const scheduledAt = ref('')
-const notes = ref('')
-const existingVideoUrl = ref('')
+const preferredAt = ref('')
 const error = ref('')
 const loading = ref(false)
 
-const recorder = useVideoRecorder('driveway-videos')
+const recorder = useVideoRecorder()
 const { step, recording, videoBlob, videoPreviewUrl, stream } = recorder
-const { openCamera, startRecording, stopRecording, stopCamera, rerecord, uploadVideo } = recorder
+const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = recorder
 
-onMounted(async () => {
+onMounted(() => {
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
-  scheduledAt.value = tomorrow.toISOString().slice(0, 16)
-
-  const { data } = await supabase
-    .from('pickups')
-    .select('driveway_video_url')
-    .eq('container_id', props.container.id)
-    .eq('status', 'pending')
-    .maybeSingle()
-  if (data?.driveway_video_url) {
-    existingVideoUrl.value = data.driveway_video_url
-  }
+  preferredAt.value = tomorrow.toISOString().slice(0, 16)
 })
 
 async function save() {
-  const hasVideo = videoBlob.value || existingVideoUrl.value
-  if (!hasVideo) {
-    error.value = 'Bitte nimm vor der Planung ein Einfahrtsvideo auf.'
-    return
-  }
   error.value = ''
   loading.value = true
   try {
-    const videoUrl = videoBlob.value
-      ? await uploadVideo(`driveway-${props.site.id}`)
-      : existingVideoUrl.value
+    const dt = preferredAt.value ? new Date(preferredAt.value).toISOString() : undefined
+    await containersApi.requestEmptying(props.container.bookingId, dt)
 
-    const { data, error: insertError } = await supabase
-      .from('pickups')
-      .insert({
-        container_id: props.container.id,
-        site_id: props.site.id,
-        customer_id: props.site.customer_id,
-        scheduled_at: new Date(scheduledAt.value).toISOString(),
-        notes: notes.value || null,
-        driveway_video_url: videoUrl,
-        status: 'pending',
-      })
-      .select()
-      .single()
-    if (insertError) throw insertError
+    // If a new video was recorded, upload it as an Anfahrt for the site
+    if (videoBlob.value) {
+      const form = new FormData()
+      form.append('video', videoBlob.value, 'anfahrt.webm')
+      form.append('lat', String(props.site.lat))
+      form.append('lon', String(props.site.lon))
+      await sitesApi.uploadAnfahrt(props.site.siteId, form)
+    }
 
-    await supabase
-      .from('containers')
-      .update({
-        status: 'scheduled_pickup',
-        pickup_date: new Date(scheduledAt.value).toISOString().slice(0, 10),
-      })
-      .eq('id', props.container.id)
-
-    emit('saved', data)
+    emit('saved')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Unbekannter Fehler'
   } finally {
     loading.value = false
   }
-}
-
-function clearExistingVideo() {
-  existingVideoUrl.value = ''
 }
 </script>
 
@@ -86,7 +51,7 @@ function clearExistingVideo() {
   <div class="modal-overlay" @click.self="stopCamera(); emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>Abholung planen</h2>
+        <h2>{{ step === 'video' ? 'Einfahrtsvideo aufnehmen' : 'Abholung planen' }}</h2>
         <button class="modal-close" @click="stopCamera(); emit('close')">&times;</button>
       </div>
 
@@ -94,30 +59,30 @@ function clearExistingVideo() {
 
       <!-- Form view -->
       <div v-if="step === 'form'">
+        <p class="text-sm text-muted mb-2">
+          {{ WASTE_TYPE_LABEL[container.wasteType] }} — {{ site.name }}
+        </p>
+
         <div class="form-group">
-          <label>Datum &amp; Uhrzeit der Abholung</label>
-          <input type="datetime-local" v-model="scheduledAt" />
-        </div>
-        <div class="form-group">
-          <label>Hinweise für den Fahrer</label>
-          <textarea v-model="notes" rows="2" placeholder="Zugangsinformationen..."></textarea>
+          <label>Bevorzugtes Datum &amp; Uhrzeit</label>
+          <input type="datetime-local" v-model="preferredAt" />
         </div>
 
         <div class="video-section">
-          <p class="section-title">Einfahrtsvideo</p>
-          <div v-if="videoPreviewUrl || existingVideoUrl" class="video-preview">
-            <video :src="videoPreviewUrl || existingVideoUrl" controls></video>
+          <p class="section-title">Einfahrtsvideo (optional)</p>
+          <div v-if="videoPreviewUrl" class="video-preview">
+            <video :src="videoPreviewUrl" controls></video>
             <p class="text-sm text-muted mt-1">
               Video aufgenommen.
-              <a href="#" @click.prevent="videoPreviewUrl ? rerecord() : clearExistingVideo()">Neu aufnehmen</a>
+              <a href="#" @click.prevent="rerecord()">Neu aufnehmen</a>
             </p>
           </div>
           <div v-else>
             <p class="text-sm text-muted mb-2">
-              Bitte nimm ein kurzes Video des Einfahrtsweges auf, damit der Fahrer deinen Standort findet.
+              Aktualisiere das Einfahrtsvideo, damit der Fahrer deinen Standort findet.
             </p>
             <button class="btn-warning btn-block" @click="openCamera()">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18" style="display:inline;vertical-align:middle;margin-right:6px">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.362a1 1 0 01-1.447.894L15 14M3 8a1 1 0 011-1h9a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1V8z"/>
               </svg>
               Einfahrtsvideo aufnehmen
@@ -128,7 +93,7 @@ function clearExistingVideo() {
         <div class="row mt-3" style="gap:0.75rem">
           <button class="btn-ghost btn-block" @click="stopCamera(); emit('close')">Abbrechen</button>
           <button class="btn-primary btn-block" @click="save" :disabled="loading">
-            {{ loading ? 'Speichern...' : 'Abholung planen' }}
+            {{ loading ? 'Speichern...' : 'Abholung anfragen' }}
           </button>
         </div>
       </div>

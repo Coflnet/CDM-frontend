@@ -1,3 +1,5 @@
+import type { BookingStatus } from './api'
+
 export function fillColor(pct: number): string {
   if (pct >= 80) return '#e74c3c'
   if (pct >= 50) return '#e67e22'
@@ -14,30 +16,35 @@ export function formatDateTime(d: string | null | undefined): string {
   return new Date(d).toLocaleString('de-DE', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-export const PICKUP_STATUS_LABEL: Record<string, string> = {
-  pending: 'Ausstehend',
-  driver_en_route: 'Fahrer unterwegs',
-  completed: 'Abgeschlossen',
-  cancelled: 'Storniert',
+export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
+  Requested: 'Angefragt',
+  Scheduled: 'Geplant',
+  Delivered: 'Geliefert',
+  Filling: 'In Befüllung',
+  EmptyRequested: 'Abholung angefragt',
+  Retrieved: 'Abgeholt',
+  Closed: 'Abgeschlossen',
+  Cancelled: 'Storniert',
 }
 
-export const PICKUP_STATUS_BADGE: Record<string, string> = {
-  pending: 'badge-gray',
-  driver_en_route: 'badge-blue',
-  completed: 'badge-green',
-  cancelled: 'badge-red',
+export const BOOKING_STATUS_BADGE: Record<BookingStatus, string> = {
+  Requested: 'badge-orange',
+  Scheduled: 'badge-blue',
+  Delivered: 'badge-green',
+  Filling: 'badge-green',
+  EmptyRequested: 'badge-orange',
+  Retrieved: 'badge-gray',
+  Closed: 'badge-gray',
+  Cancelled: 'badge-red',
 }
 
-export const CONTAINER_STATUS_LABEL: Record<string, string> = {
-  active: 'Aktiv',
-  scheduled_pickup: 'Abholung geplant',
-  picked_up: 'Abgeholt',
-  ordered: 'Bestellt',
-}
-
-export const CONTAINER_STATUS_BADGE: Record<string, string> = {
-  active: 'badge-green',
-  scheduled_pickup: 'badge-blue',
-  picked_up: 'badge-gray',
-  ordered: 'badge-orange',
+export const WASTE_TYPE_LABEL: Record<string, string> = {
+  Mixed: 'Gemischt',
+  Wood: 'Holz',
+  Metal: 'Metall',
+  Concrete: 'Beton',
+  Paper: 'Papier',
+  Plastic: 'Kunststoff',
+  Organic: 'Organisch',
+  Electronics: 'Elektronik',
 }

@@ -1,7 +1,6 @@
 import { ref, nextTick } from 'vue'
-import { supabase } from '../supabase'
 
-export function useVideoRecorder(bucketName: string) {
+export function useVideoRecorder() {
   const step = ref<'form' | 'video'>('form')
   const recording = ref(false)
   const videoBlob = ref<Blob | null>(null)
@@ -62,16 +61,6 @@ export function useVideoRecorder(bucketName: string) {
     await openCamera()
   }
 
-  async function uploadVideo(filePrefix: string): Promise<string> {
-    if (!videoBlob.value) return ''
-    const fileName = `${filePrefix}-${Date.now()}.webm`
-    const { error } = await supabase.storage
-      .from(bucketName)
-      .upload(fileName, videoBlob.value, { contentType: 'video/webm', upsert: true })
-    if (error) throw error
-    return supabase.storage.from(bucketName).getPublicUrl(fileName).data.publicUrl
-  }
-
   return {
     step,
     recording,
@@ -85,6 +74,5 @@ export function useVideoRecorder(bucketName: string) {
     stopRecording,
     stopCamera,
     rerecord,
-    uploadVideo,
   }
 }

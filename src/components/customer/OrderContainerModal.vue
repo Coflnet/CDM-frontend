@@ -1,80 +1,47 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { supabase } from '../../supabase'
-import type { Site, ContainerOrder } from '../../supabase'
+import { ref } from 'vue'
+import { sitesApi } from '../../api'
+import type { Site, WasteType } from '../../api'
 import { useVideoRecorder } from '../../composables/useVideoRecorder'
+import { WASTE_TYPE_LABEL } from '../../utils'
 
 const props = defineProps<{ sites: Site[] }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'ordered'): void }>()
 
-const siteId = ref(props.sites[0]?.id ?? '')
-const containerType = ref('10yd')
-const quantity = ref(1)
+const siteId = ref(props.sites[0]?.siteId ?? '')
+const wasteType = ref<WasteType>('Mixed')
 const notes = ref('')
+const preferredDate = ref('')
 const error = ref('')
 const loading = ref(false)
-const pastOrders = ref<ContainerOrder[]>([])
 
-const containerTypes = ['10yd', '15yd', '20yd', '30yd', '40yd']
+const wasteTypes: WasteType[] = ['Mixed', 'Wood', 'Metal', 'Concrete', 'Paper', 'Plastic', 'Organic', 'Electronics']
 
-const recorder = useVideoRecorder('driveway-videos')
+const recorder = useVideoRecorder()
 const { step, recording, videoBlob, videoPreviewUrl, stream } = recorder
 const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = recorder
 
-onMounted(async () => {
-  const { data } = await supabase
-    .from('container_orders')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(3)
-  pastOrders.value = data ?? []
-})
-
-function reorderFrom(order: ContainerOrder) {
-  siteId.value = order.site_id
-  containerType.value = order.container_type
-  quantity.value = order.quantity
-  notes.value = order.notes ?? ''
-}
-
-async function uploadVideo(): Promise<string> {
-  if (!videoBlob.value) return ''
-  const fileName = `driveway-${siteId.value}-${Date.now()}.webm`
-  const { error: uploadError } = await supabase.storage
-    .from('driveway-videos')
-    .upload(fileName, videoBlob.value, { contentType: 'video/webm', upsert: true })
-  if (uploadError) throw uploadError
-  return supabase.storage.from('driveway-videos').getPublicUrl(fileName).data.publicUrl
-}
-
 async function save() {
-  const site = props.sites.find(s => s.id === siteId.value)
+  const site = props.sites.find(s => s.siteId === siteId.value)
   if (!site) { error.value = 'Bitte wähle einen Standort aus.'; return }
   if (!videoBlob.value) { error.value = 'Bitte nimm vor der Bestellung ein Einfahrtsvideo auf.'; return }
   error.value = ''
   loading.value = true
   try {
-    const videoUrl = await uploadVideo()
+    // Upload anfahrt video first
+    const form = new FormData()
+    form.append('video', videoBlob.value, 'anfahrt.webm')
+    form.append('lat', String(site.lat))
+    form.append('lon', String(site.lon))
+    if (site.orientationNote) form.append('orientationNote', site.orientationNote)
+    await sitesApi.uploadAnfahrt(siteId.value, form)
 
-    const { error: orderErr } = await supabase.from('container_orders').insert({
-      customer_id: site.customer_id,
-      site_id: siteId.value,
-      container_type: containerType.value,
-      quantity: quantity.value,
-      notes: notes.value || null,
-      status: 'pending',
+    // Create order
+    await sitesApi.createOrder(siteId.value, {
+      wasteTypes: [wasteType.value],
+      requestedDeliveryAt: preferredDate.value ? new Date(preferredDate.value).toISOString() : undefined,
+      notes: notes.value || undefined,
     })
-    if (orderErr) throw orderErr
-
-    const containerInserts = Array.from({ length: quantity.value }, () => ({
-      site_id: siteId.value,
-      container_type: containerType.value,
-      fill_state: 0,
-      status: 'ordered' as const,
-      driveway_video_url: videoUrl,
-    }))
-    const { error: containerErr } = await supabase.from('containers').insert(containerInserts)
-    if (containerErr) throw containerErr
 
     emit('ordered')
   } catch (e: unknown) {
@@ -89,7 +56,7 @@ async function save() {
   <div class="modal-overlay" @click.self="stopCamera(); emit('close')">
     <div class="modal">
       <div class="modal-header">
-        <h2>{{ step === 'video' ? 'Einfahrtsvideo aufnehmen' : 'Neuen Container bestellen' }}</h2>
+        <h2>{{ step === 'video' ? 'Einfahrtsvideo aufnehmen' : 'Container bestellen' }}</h2>
         <button class="modal-close" @click="stopCamera(); emit('close')">&times;</button>
       </div>
 
@@ -97,35 +64,21 @@ async function save() {
 
       <!-- Order form -->
       <div v-if="step === 'form'">
-        <div v-if="pastOrders.length" class="past-orders mb-2">
-          <p class="section-title">Erneut bestellen</p>
-          <div class="stack">
-            <div v-for="o in pastOrders" :key="o.id" class="row-between card" style="padding:0.75rem">
-              <div>
-                <span class="text-sm font-bold">{{ o.quantity }}x {{ o.container_type }}</span>
-                <p class="text-sm text-muted">{{ sites.find(s => s.id === o.site_id)?.name ?? '—' }}</p>
-              </div>
-              <button class="btn-ghost btn-sm" @click="reorderFrom(o)">Wiederholen</button>
-            </div>
-          </div>
-          <hr class="divider" />
-        </div>
-
         <div class="form-group">
           <label>Standort</label>
           <select v-model="siteId">
-            <option v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</option>
+            <option v-for="s in sites" :key="s.siteId" :value="s.siteId">{{ s.name }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Containergröße</label>
-          <select v-model="containerType">
-            <option v-for="t in containerTypes" :key="t" :value="t">{{ t }} Mulde</option>
+          <label>Abfalltyp</label>
+          <select v-model="wasteType">
+            <option v-for="t in wasteTypes" :key="t" :value="t">{{ WASTE_TYPE_LABEL[t] }}</option>
           </select>
         </div>
         <div class="form-group">
-          <label>Anzahl</label>
-          <input type="number" v-model.number="quantity" min="1" max="10" />
+          <label>Gewünschtes Lieferdatum (optional)</label>
+          <input type="datetime-local" v-model="preferredDate" />
         </div>
         <div class="form-group">
           <label>Hinweise</label>
@@ -202,7 +155,6 @@ async function save() {
 </template>
 
 <style scoped>
-.font-bold { font-weight: 700; }
 .required { color: #e74c3c; }
 .video-section { margin-top: 0.75rem; }
 .video-preview video,

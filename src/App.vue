@@ -1,13 +1,74 @@
 <script setup lang="ts">
-import { authState, selectRole, clearRole } from './store/auth'
+import { ref } from 'vue'
+import { authState, login, selectRole, logout } from './store/auth'
+import type { UserRole } from './store/auth'
 import CustomerDashboard from './components/customer/CustomerDashboard.vue'
 import DriverDashboard from './components/driver/DriverDashboard.vue'
+
+const tokenInput = ref('')
+const tokenError = ref('')
+const pendingRole = ref<UserRole | null>(null)
+
+function chooseRole(role: UserRole) {
+  if (authState.authenticated) {
+    selectRole(role)
+  } else {
+    pendingRole.value = role
+  }
+}
+
+function submitToken() {
+  if (!tokenInput.value.trim()) {
+    tokenError.value = 'Bitte gib deinen API-Token ein.'
+    return
+  }
+  login(tokenInput.value.trim(), pendingRole.value!)
+  tokenInput.value = ''
+  tokenError.value = ''
+  pendingRole.value = null
+}
+
+function cancelToken() {
+  pendingRole.value = null
+  tokenError.value = ''
+  tokenInput.value = ''
+}
 </script>
 
 <template>
   <div id="app-root">
+    <!-- Token entry overlay -->
+    <div v-if="pendingRole" class="role-screen">
+      <div class="role-card">
+        <div class="brand">
+          <span class="brand-diamond">&#9670;</span>
+          <span class="brand-name">CDM</span>
+        </div>
+        <p class="brand-sub">API-Token eingeben</p>
+
+        <div v-if="tokenError" class="alert-inline">{{ tokenError }}</div>
+
+        <div class="form-group" style="text-align:left;margin-top:1.5rem">
+          <label>Bearer Token</label>
+          <input
+            v-model="tokenInput"
+            type="password"
+            placeholder="eyJ..."
+            autofocus
+            @keyup.enter="submitToken"
+          />
+          <p class="hint">Dein JWT aus dem Firebase-Login oder der API-Dokumentation.</p>
+        </div>
+
+        <div class="row mt-3" style="gap:0.75rem">
+          <button class="btn-ghost btn-block" @click="cancelToken">Zurück</button>
+          <button class="btn-primary btn-block" @click="submitToken">Anmelden</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Role selector -->
-    <div v-if="!authState.role" class="role-screen">
+    <div v-else-if="!authState.role" class="role-screen">
       <div class="role-card">
         <div class="brand">
           <span class="brand-diamond">&#9670;</span>
@@ -19,7 +80,7 @@ import DriverDashboard from './components/driver/DriverDashboard.vue'
         <p class="choose-label">Wer bist du?</p>
 
         <div class="role-options">
-          <button class="role-btn" @click="selectRole('customer')">
+          <button class="role-btn" @click="chooseRole('customer')">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
             </span>
@@ -27,7 +88,7 @@ import DriverDashboard from './components/driver/DriverDashboard.vue'
             <span class="role-desc">Container verwalten &amp; Abholungen planen</span>
           </button>
 
-          <button class="role-btn" @click="selectRole('driver')">
+          <button class="role-btn" @click="chooseRole('driver')">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
             </span>
@@ -45,7 +106,10 @@ import DriverDashboard from './components/driver/DriverDashboard.vue'
           <span class="logo-accent"></span>
           CDM &mdash; {{ authState.role === 'driver' ? 'Fahreransicht' : 'Kundenportal' }}
         </div>
-        <button class="btn-ghost btn-sm" @click="clearRole">Rolle wechseln</button>
+        <div class="row" style="gap:0.5rem">
+          <button class="btn-ghost btn-sm" @click="authState.role = null">Rolle wechseln</button>
+          <button class="btn-ghost btn-sm" @click="logout">Abmelden</button>
+        </div>
       </header>
       <CustomerDashboard v-if="authState.role === 'customer'" />
       <DriverDashboard v-else />
@@ -174,4 +238,23 @@ import DriverDashboard from './components/driver/DriverDashboard.vue'
   font-size: 0.8rem;
   color: var(--text-muted);
 }
+
+.alert-inline {
+  background: rgba(231,76,60,0.12);
+  border: 1px solid rgba(231,76,60,0.3);
+  border-radius: var(--radius-sm);
+  color: #e74c3c;
+  font-size: 0.82rem;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 0.4rem;
+  text-align: left;
+}
+
+.mt-3 { margin-top: 1.25rem; }
 </style>

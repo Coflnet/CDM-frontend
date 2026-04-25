@@ -1,42 +1,40 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { supabase } from '../../supabase'
-import type { Container, Site, Pickup } from '../../supabase'
-import { fillColor, formatDate, formatDateTime, CONTAINER_STATUS_LABEL, CONTAINER_STATUS_BADGE, PICKUP_STATUS_LABEL, PICKUP_STATUS_BADGE } from '../../utils'
+import { sitesApi } from '../../api'
+import type { CustomerContainerView, Site, Anfahrt } from '../../api'
+import { fillColor, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
 
-const props = defineProps<{ container: Container; site: Site }>()
+const props = defineProps<{ container: CustomerContainerView; site: Site }>()
 const emit = defineEmits<{
   (e: 'close'): void
   (e: 'schedule-pickup'): void
   (e: 'update-fill'): void
 }>()
 
-const pickups = ref<Pickup[]>([])
+const anfahrten = ref<Anfahrt[]>([])
 const loading = ref(true)
 
 onMounted(async () => {
-  const { data } = await supabase
-    .from('pickups')
-    .select('*')
-    .eq('container_id', props.container.id)
-    .order('scheduled_at', { ascending: false })
-    .limit(5)
-  pickups.value = data ?? []
-  loading.value = false
+  try {
+    anfahrten.value = await sitesApi.listAnfahrten(props.site.siteId)
+  } catch {
+    // no anfahrten available
+  } finally {
+    loading.value = false
+  }
 })
 
-const currentFillColor = computed(() => fillColor(props.container.fill_state))
+const fillPct = computed(() => Math.round(props.container.fillLevel * 100))
+const currentFillColor = computed(() => fillColor(fillPct.value))
 
-const pendingPickup = computed(() =>
-  pickups.value.find(p => p.status === 'pending' || p.status === 'driver_en_route')
-)
+const latestAnfahrt = computed(() => anfahrten.value[0] ?? null)
 </script>
 
 <template>
   <div class="modal-overlay" @click.self="emit('close')">
     <div class="modal modal-detail">
       <div class="modal-header">
-        <h2>{{ container.container_type }} Mulde</h2>
+        <h2>{{ WASTE_TYPE_LABEL[container.wasteType] }} Mulde</h2>
         <button class="modal-close" @click="emit('close')">&times;</button>
       </div>
 
@@ -47,8 +45,8 @@ const pendingPickup = computed(() =>
             <p class="detail-site">{{ site.name }}</p>
             <p class="text-sm text-muted">{{ site.address }}</p>
           </div>
-          <span class="badge" :class="CONTAINER_STATUS_BADGE[container.status]">
-            {{ CONTAINER_STATUS_LABEL[container.status] }}
+          <span class="badge" :class="BOOKING_STATUS_BADGE[container.status]">
+            {{ BOOKING_STATUS_LABEL[container.status] }}
           </span>
         </div>
 
@@ -56,10 +54,10 @@ const pendingPickup = computed(() =>
         <div class="fill-section">
           <div class="row-between mb-1">
             <span class="text-sm text-muted">Füllstand</span>
-            <span class="fill-pct" :style="{ color: currentFillColor }">{{ container.fill_state }}%</span>
+            <span class="fill-pct" :style="{ color: currentFillColor }">{{ fillPct }}%</span>
           </div>
           <div class="fill-bar-wrap fill-bar-lg">
-            <div class="fill-bar" :style="{ width: container.fill_state + '%', background: currentFillColor, transition: 'width 0.4s ease' }"></div>
+            <div class="fill-bar" :style="{ width: fillPct + '%', background: currentFillColor, transition: 'width 0.4s ease' }"></div>
           </div>
           <div class="fill-labels row-between text-sm text-muted" style="margin-top:0.25rem">
             <span>Leer</span><span>Halb</span><span>Voll</span>
@@ -70,17 +68,17 @@ const pendingPickup = computed(() =>
       <!-- Meta grid -->
       <div class="meta-grid">
         <div class="meta-item">
-          <span class="meta-label">Containertyp</span>
-          <span class="meta-val">{{ container.container_type }}</span>
+          <span class="meta-label">Abfalltyp</span>
+          <span class="meta-val">{{ WASTE_TYPE_LABEL[container.wasteType] }}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Geliefert am</span>
-          <span class="meta-val">{{ formatDate(container.delivered_at) }}</span>
+          <span class="meta-label">Containernummer</span>
+          <span class="meta-val">{{ container.containerNumber ?? '—' }}</span>
         </div>
         <div class="meta-item">
-          <span class="meta-label">Geplante Abholung</span>
-          <span class="meta-val" :class="{ 'text-danger': container.pickup_date && (new Date(container.pickup_date).getTime() - Date.now()) < 1000*60*60*48 }">
-            {{ formatDate(container.pickup_date) }}
+          <span class="meta-label">Geplante Leerung</span>
+          <span class="meta-val" :class="{ 'text-danger': container.expectedEmptyingAt && (new Date(container.expectedEmptyingAt).getTime() - Date.now()) < 1000*60*60*48 }">
+            {{ formatDate(container.expectedEmptyingAt) }}
           </span>
         </div>
         <div class="meta-item">
@@ -89,37 +87,21 @@ const pendingPickup = computed(() =>
         </div>
       </div>
 
-      <!-- Active pickup alert -->
-      <div v-if="pendingPickup" class="alert alert-info" style="margin-bottom:0.75rem">
-        <strong>Abholung geplant:</strong> {{ formatDateTime(pendingPickup.scheduled_at) }}
-        <span class="badge" :class="PICKUP_STATUS_BADGE[pendingPickup.status]" style="margin-left:0.5rem">
-          {{ PICKUP_STATUS_LABEL[pendingPickup.status] }}
-        </span>
-        <div v-if="pendingPickup.driver_eta" class="text-sm" style="margin-top:0.25rem">
-          Fahrer ETA: {{ formatDateTime(pendingPickup.driver_eta) }}
-        </div>
+      <!-- Orientation note -->
+      <div v-if="site.orientationNote" class="alert alert-info" style="margin-bottom:0.75rem">
+        <strong>Hinweis:</strong> {{ site.orientationNote }}
       </div>
 
-      <!-- Driveway video -->
-      <div v-if="container.driveway_video_url" class="video-section">
+      <!-- Anfahrt video -->
+      <div v-if="loading" class="spinner-sm"></div>
+      <div v-else-if="latestAnfahrt" class="video-section">
         <p class="section-title">Einfahrtsvideo</p>
-        <video :src="container.driveway_video_url" controls class="driveway-video"></video>
-      </div>
-
-      <!-- Pickup history -->
-      <div class="history-section">
-        <p class="section-title">Abholungsverlauf</p>
-        <div v-if="loading" class="spinner-sm"></div>
-        <div v-else-if="pickups.length === 0" class="text-sm text-muted">Keine Abholungen bisher.</div>
-        <div v-else class="pickup-list">
-          <div v-for="p in pickups" :key="p.id" class="pickup-row row-between">
-            <div>
-              <p class="text-sm">{{ formatDateTime(p.scheduled_at) }}</p>
-              <p v-if="p.notes" class="text-sm text-muted">{{ p.notes }}</p>
-            </div>
-            <span class="badge" :class="PICKUP_STATUS_BADGE[p.status]">{{ PICKUP_STATUS_LABEL[p.status] }}</span>
-          </div>
-        </div>
+        <video
+          :src="sitesApi.videoUrl(site.siteId, latestAnfahrt.anfahrtId)"
+          controls
+          class="driveway-video"
+        ></video>
+        <p v-if="latestAnfahrt.orientationNote" class="text-sm text-muted" style="margin-top:0.35rem">{{ latestAnfahrt.orientationNote }}</p>
       </div>
 
       <!-- Actions -->
@@ -159,14 +141,6 @@ const pendingPickup = computed(() =>
 .text-danger { color: #e74c3c; }
 .video-section { margin-bottom: 1rem; }
 .driveway-video { width: 100%; max-height: 200px; object-fit: cover; border-radius: var(--radius-sm); }
-.history-section { margin-bottom: 0.5rem; }
-.pickup-list { display: flex; flex-direction: column; gap: 0.5rem; }
-.pickup-row {
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border-card);
-  align-items: center;
-}
-.pickup-row:last-child { border-bottom: none; }
 .spinner-sm {
   width: 20px; height: 20px;
   border: 2px solid var(--border-card);

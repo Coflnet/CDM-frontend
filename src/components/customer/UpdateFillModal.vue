@@ -1,60 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { supabase } from '../../supabase'
-import type { Container } from '../../supabase'
-import { fillColor } from '../../utils'
+import { ref, computed } from 'vue'
+import { containersApi } from '../../api'
+import type { CustomerContainerView } from '../../api'
+import { fillColor, WASTE_TYPE_LABEL } from '../../utils'
 
-const props = defineProps<{ container: Container }>()
+const props = defineProps<{ container: CustomerContainerView }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'updated'): void }>()
 
-const fillState = ref(props.container.fill_state)
-const photoBlob = ref<Blob | null>(null)
-const photoPreviewUrl = ref('')
+const fillState = ref(Math.round(props.container.fillLevel * 100))
+const note = ref('')
 const error = ref('')
 const loading = ref(false)
-const fileInput = ref<HTMLInputElement | null>(null)
 
-function handleFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  photoBlob.value = file
-  photoPreviewUrl.value = URL.createObjectURL(file)
-}
-
-function clearPhoto() {
-  photoPreviewUrl.value = ''
-  photoBlob.value = null
-}
+const fillColorVal = computed(() => fillColor(fillState.value))
 
 async function save() {
   error.value = ''
   loading.value = true
   try {
-    let photoUrl: string | null = null
-    if (photoBlob.value) {
-      const fileName = `fill-${props.container.id}-${Date.now()}.jpg`
-      const { error: upErr } = await supabase.storage
-        .from('container-photos')
-        .upload(fileName, photoBlob.value, { contentType: photoBlob.value.type, upsert: true })
-      if (upErr) throw upErr
-      const { data } = supabase.storage.from('container-photos').getPublicUrl(fileName)
-      photoUrl = data.publicUrl
-    }
-
-    const { error: updateErr } = await supabase
-      .from('containers')
-      .update({ fill_state: fillState.value })
-      .eq('id', props.container.id)
-    if (updateErr) throw updateErr
-
-    if (photoUrl) {
-      await supabase.from('container_photos').insert({
-        container_id: props.container.id,
-        photo_url: photoUrl,
-        fill_state: fillState.value,
-        taken_by: props.container.site_id,
-      })
-    }
+    await containersApi.updateFill(props.container.bookingId, fillState.value / 100, note.value || undefined)
     emit('updated')
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Unbekannter Fehler'
@@ -72,16 +36,18 @@ async function save() {
         <button class="modal-close" @click="emit('close')">&times;</button>
       </div>
 
+      <p class="text-sm text-muted mb-2">{{ WASTE_TYPE_LABEL[container.wasteType] }}</p>
+
       <div v-if="error" class="alert alert-error mb-2">{{ error }}</div>
 
       <div class="form-group">
         <label>
-          Füllstand: <strong :style="{ color: fillColor(fillState) }">{{ fillState }}%</strong>
+          Füllstand: <strong :style="{ color: fillColorVal }">{{ fillState }}%</strong>
         </label>
         <div class="slider-wrap">
           <input type="range" v-model.number="fillState" min="0" max="100" step="5" class="fill-slider" />
           <div class="fill-bar-wrap mt-1">
-            <div class="fill-bar" :style="{ width: fillState + '%', background: fillColor(fillState) }"></div>
+            <div class="fill-bar" :style="{ width: fillState + '%', background: fillColorVal }"></div>
           </div>
         </div>
         <div class="fill-labels row-between text-sm text-muted mt-1">
@@ -90,21 +56,8 @@ async function save() {
       </div>
 
       <div class="form-group">
-        <label>Foto des Containers (optional)</label>
-        <div v-if="photoPreviewUrl" class="photo-preview">
-          <img :src="photoPreviewUrl" alt="Container-Foto" />
-          <button class="btn-ghost btn-sm mt-1" @click="clearPhoto">Entfernen</button>
-        </div>
-        <div v-else class="photo-btn-wrap">
-          <button class="btn-ghost btn-block" @click="fileInput?.click()">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" width="18" height="18">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-              <path stroke-linecap="round" stroke-linejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-            Foto aufnehmen / hochladen
-          </button>
-          <input ref="fileInput" type="file" accept="image/*" capture="environment" style="display:none" @change="handleFile" />
-        </div>
+        <label>Notiz (optional)</label>
+        <input v-model="note" type="text" placeholder="Kurze Anmerkung..." />
       </div>
 
       <div class="row mt-3" style="gap:0.75rem">
@@ -137,11 +90,6 @@ async function save() {
   cursor: pointer;
   box-shadow: 0 0 0 3px rgba(58,143,212,0.25);
 }
-.photo-preview img {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  max-height: 200px;
-  object-fit: cover;
-}
-.photo-btn-wrap { position: relative; }
+.mt-1 { margin-top: 0.4rem; }
+.mt-3 { margin-top: 1.25rem; }
 </style>

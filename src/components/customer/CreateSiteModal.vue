@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { supabase } from '../../supabase'
-import type { Site } from '../../supabase'
+import { sitesApi } from '../../api'
+import type { Site } from '../../api'
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'created', site: Site): void }>()
 
 const name = ref('')
 const address = ref('')
+const orientationNote = ref('')
 const error = ref('')
 const loading = ref(false)
 
@@ -16,19 +17,16 @@ async function save() {
   error.value = ''
   loading.value = true
   try {
-    const { data, error: insertErr } = await supabase
-      .from('sites')
-      .insert({
-        customer_id: '00000000-0000-0000-0000-000000000000',
-        name: name.value.trim(),
-        address: address.value.trim(),
-      })
-      .select()
-      .single()
-    if (insertErr) throw insertErr
-    emit('created', data)
-  } catch (e: any) {
-    error.value = e.message
+    const site = await sitesApi.create({
+      name: name.value.trim(),
+      address: address.value.trim(),
+      lat: 0,
+      lon: 0,
+      orientationNote: orientationNote.value.trim() || undefined,
+    })
+    emit('created', site)
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Unbekannter Fehler'
   } finally {
     loading.value = false
   }
@@ -53,6 +51,10 @@ async function save() {
         <label>Adresse</label>
         <input v-model="address" type="text" placeholder="Musterstraße 1, Stadt, Bundesland" />
       </div>
+      <div class="form-group">
+        <label>Hinweis für Fahrer (optional)</label>
+        <textarea v-model="orientationNote" rows="2" placeholder="z. B. Tor auf der Nordseite, Einfahrt links..."></textarea>
+      </div>
 
       <div class="row mt-3" style="gap:0.75rem">
         <button class="btn-ghost btn-block" @click="emit('close')">Abbrechen</button>
@@ -63,3 +65,7 @@ async function save() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.mt-3 { margin-top: 1.25rem; }
+</style>

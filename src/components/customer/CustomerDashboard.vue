@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { supabase } from '../../supabase'
-import type { Container, Site, Pickup } from '../../supabase'
-import { fillColor, formatDateTime, PICKUP_STATUS_LABEL, PICKUP_STATUS_BADGE } from '../../utils'
+import { sitesApi, containersApi } from '../../api'
+import type { Site, CustomerContainerView } from '../../api'
+import { fillColor, formatDateTime, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
 import ContainerCard from './ContainerCard.vue'
 import ContainerDetailModal from './ContainerDetailModal.vue'
 import SchedulePickupModal from './SchedulePickupModal.vue'
@@ -11,67 +11,60 @@ import OrderContainerModal from './OrderContainerModal.vue'
 import CreateSiteModal from './CreateSiteModal.vue'
 
 const sites = ref<Site[]>([])
-const containers = ref<Container[]>([])
-const pickups = ref<Pickup[]>([])
+const containers = ref<CustomerContainerView[]>([])
 const loading = ref(true)
+const error = ref('')
 
 const activeTab = ref<'containers' | 'pickups' | 'sites'>('containers')
-const detailTarget = ref<{ container: Container; site: Site } | null>(null)
-const scheduleTarget = ref<{ container: Container; site: Site } | null>(null)
-const fillTarget = ref<Container | null>(null)
+const detailTarget = ref<{ container: CustomerContainerView; site: Site } | null>(null)
+const scheduleTarget = ref<{ container: CustomerContainerView; site: Site } | null>(null)
+const fillTarget = ref<CustomerContainerView | null>(null)
 const showOrder = ref(false)
 const showCreateSite = ref(false)
 
 async function load() {
   loading.value = true
-  const [sitesRes, containersRes, pickupsRes] = await Promise.all([
-    supabase.from('sites').select('*').order('created_at'),
-    supabase.from('containers').select('*').order('created_at'),
-    supabase.from('pickups').select('*').order('scheduled_at'),
-  ])
-  sites.value = sitesRes.data ?? []
-  containers.value = containersRes.data ?? []
-  pickups.value = pickupsRes.data ?? []
+  error.value = ''
+  try {
+    const [sitesData, containersData] = await Promise.all([
+      sitesApi.list(),
+      containersApi.list(),
+    ])
+    sites.value = sitesData.filter(s => s.active)
+    containers.value = containersData
 
-  // Default to sites view when customer has more than one active container
-  const active = containers.value.filter(c => c.status !== 'picked_up')
-  if (active.length > 1) activeTab.value = 'sites'
-
-  loading.value = false
+    const active = containersData.filter(c => c.status !== 'Retrieved' && c.status !== 'Closed' && c.status !== 'Cancelled')
+    if (active.length > 1) activeTab.value = 'sites'
+  } catch (e: unknown) {
+    error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(load)
 
-function siteForContainer(c: Container): Site | undefined {
-  return sites.value.find(s => s.id === c.site_id)
+function siteForContainer(c: CustomerContainerView): Site | undefined {
+  return sites.value.find(s => s.siteId === c.siteId)
 }
 
-function containersForSite(siteId: string): Container[] {
-  return containers.value.filter(c => c.site_id === siteId && c.status !== 'picked_up')
+function containersForSite(siteId: string): CustomerContainerView[] {
+  return containers.value.filter(c => c.siteId === siteId && c.status !== 'Retrieved' && c.status !== 'Closed' && c.status !== 'Cancelled')
 }
 
-function containerForPickup(p: Pickup): Container | undefined {
-  return containers.value.find(c => c.id === p.container_id)
-}
-
-function pickupSoon(scheduledAt: string): boolean {
-  const diff = new Date(scheduledAt).getTime() - Date.now()
-  return diff > 0 && diff < 1000 * 60 * 60 * 24 * 2
-}
-
-function openDetail(container: Container, site: Site) {
+function openDetail(container: CustomerContainerView, site: Site) {
   detailTarget.value = { container, site }
 }
 
 const activeContainers = computed(() =>
-  containers.value.filter(c => c.status !== 'picked_up')
+  containers.value.filter(c => c.status !== 'Retrieved' && c.status !== 'Closed' && c.status !== 'Cancelled')
 )
 
 const upcomingPickups = computed(() =>
-  pickups.value
-    .filter(p => p.status !== 'completed' && p.status !== 'cancelled')
-    .sort((a, b) => new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime())
+  containers.value.filter(c => c.status === 'EmptyRequested')
 )
+
+const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
 </script>
 
 <template>
@@ -87,6 +80,7 @@ const upcomingPickups = computed(() =>
         </div>
 
         <div v-if="loading" class="spinner"></div>
+        <div v-else-if="error" class="alert alert-error">{{ error }}</div>
 
         <div v-else>
           <div class="summary-chips row mb-3">
@@ -96,7 +90,7 @@ const upcomingPickups = computed(() =>
             </div>
             <div v-if="upcomingPickups.length" class="chip chip-warn">
               <span class="chip-val">{{ upcomingPickups.length }}</span>
-              <span class="chip-label">Geplant</span>
+              <span class="chip-label">Abholung</span>
             </div>
             <div class="chip">
               <span class="chip-val">{{ sites.length }}</span>
@@ -118,7 +112,7 @@ const upcomingPickups = computed(() =>
               <button class="btn-primary mt-2" @click="showOrder = true">Container bestellen</button>
             </div>
             <div v-else class="stack">
-              <template v-for="c in activeContainers" :key="c.id">
+              <template v-for="c in activeContainers" :key="c.bookingId">
                 <ContainerCard
                   v-if="siteForContainer(c)"
                   :container="c"
@@ -135,35 +129,23 @@ const upcomingPickups = computed(() =>
           <div v-if="activeTab === 'pickups'">
             <div v-if="upcomingPickups.length === 0" class="empty-state">
               <div class="icon">&#128197;</div>
-              <p>Keine geplanten Abholungen.</p>
+              <p>Keine laufenden Abholungsanfragen.</p>
             </div>
             <div v-else class="stack">
-              <div
-                v-for="p in upcomingPickups"
-                :key="p.id"
-                class="card"
-                :class="{ 'warn-pulse': pickupSoon(p.scheduled_at) }"
-              >
+              <div v-for="c in upcomingPickups" :key="c.bookingId" class="card">
                 <div class="row-between mb-1">
                   <div>
-                    <h3>{{ containerForPickup(p)?.container_type ?? '?' }} Abholung</h3>
+                    <h3>{{ WASTE_TYPE_LABEL[c.wasteType] }} Abholung</h3>
                     <p class="text-sm text-muted">
-                      {{ siteForContainer(containerForPickup(p) ?? containers[0])?.name ?? '—' }}
+                      {{ siteForContainer(c)?.name ?? '—' }}
                     </p>
                   </div>
-                  <span class="badge" :class="PICKUP_STATUS_BADGE[p.status]">
-                    {{ PICKUP_STATUS_LABEL[p.status] }}
+                  <span class="badge" :class="BOOKING_STATUS_BADGE[c.status]">
+                    {{ BOOKING_STATUS_LABEL[c.status] }}
                   </span>
                 </div>
-                <p class="text-sm text-muted">{{ formatDateTime(p.scheduled_at) }}</p>
-                <div v-if="p.driver_eta" class="alert alert-info" style="margin-top:0.5rem">
-                  Fahrer ETA: {{ formatDateTime(p.driver_eta) }}
-                </div>
-                <div v-if="pickupSoon(p.scheduled_at)" class="alert alert-warning" style="margin-top:0.5rem">
-                  Abholung innerhalb von 48 Stunden!
-                </div>
-                <div v-if="p.notes" class="text-sm text-muted" style="margin-top:0.35rem">
-                  Notiz: {{ p.notes }}
+                <div v-if="c.expectedEmptyingAt" class="text-sm text-muted">
+                  Geplante Leerung: {{ formatDateTime(c.expectedEmptyingAt) }}
                 </div>
               </div>
             </div>
@@ -183,30 +165,30 @@ const upcomingPickups = computed(() =>
             </div>
 
             <div v-else class="stack">
-              <div v-for="s in sites" :key="s.id" class="card site-card">
+              <div v-for="s in sites" :key="s.siteId" class="card site-card">
                 <div class="row-between mb-1">
                   <div>
                     <h3>{{ s.name }}</h3>
                     <p class="text-sm text-muted">{{ s.address }}</p>
                   </div>
-                  <div class="badge badge-gray">{{ containersForSite(s.id).length }} Container</div>
+                  <div class="badge badge-gray">{{ containersForSite(s.siteId).length }} Container</div>
                 </div>
 
-                <div v-if="containersForSite(s.id).length" class="site-containers">
+                <div v-if="containersForSite(s.siteId).length" class="site-containers">
                   <div
-                    v-for="c in containersForSite(s.id)"
-                    :key="c.id"
+                    v-for="c in containersForSite(s.siteId)"
+                    :key="c.bookingId"
                     class="site-container-row row-between clickable"
                     @click="openDetail(c, s)"
                   >
                     <div class="container-row-left">
-                      <span class="text-sm font-semibold">{{ c.container_type }}</span>
+                      <span class="text-sm font-semibold">{{ WASTE_TYPE_LABEL[c.wasteType] }}</span>
                     </div>
                     <div class="fill-inline row" style="gap:0.5rem;flex:1;margin:0 0.75rem">
                       <div class="fill-bar-wrap" style="flex:1">
-                        <div class="fill-bar" :style="{ width: c.fill_state + '%', background: fillColor(c.fill_state) }"></div>
+                        <div class="fill-bar" :style="{ width: fillPct(c) + '%', background: fillColor(fillPct(c)) }"></div>
                       </div>
-                      <span class="text-sm text-muted" style="min-width:2.5rem;text-align:right">{{ c.fill_state }}%</span>
+                      <span class="text-sm text-muted" style="min-width:2.5rem;text-align:right">{{ fillPct(c) }}%</span>
                     </div>
                     <div class="row" style="gap:0.5rem" @click.stop>
                       <button class="btn-primary btn-sm" @click="scheduleTarget = { container: c, site: s }">Abholen</button>
