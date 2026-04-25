@@ -1,69 +1,91 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { authState, login, selectRole, logout } from './store/auth'
-import type { UserRole } from './store/auth'
 import CustomerDashboard from './components/customer/CustomerDashboard.vue'
 import DriverDashboard from './components/driver/DriverDashboard.vue'
 
-const tokenInput = ref('')
-const tokenError = ref('')
-const pendingRole = ref<UserRole | null>(null)
+const emailInput = ref('')
+const passwordInput = ref('')
+const loginError = ref('')
+const loginLoading = ref(false)
 
-function chooseRole(role: UserRole) {
-  if (authState.authenticated) {
-    selectRole(role)
-  } else {
-    pendingRole.value = role
-  }
-}
-
-function submitToken() {
-  if (!tokenInput.value.trim()) {
-    tokenError.value = 'Bitte gib deinen API-Token ein.'
+async function submitLogin() {
+  if (!emailInput.value.trim() || !passwordInput.value) {
+    loginError.value = 'Bitte E-Mail und Passwort eingeben.'
     return
   }
-  login(tokenInput.value.trim(), pendingRole.value!)
-  tokenInput.value = ''
-  tokenError.value = ''
-  pendingRole.value = null
-}
-
-function cancelToken() {
-  pendingRole.value = null
-  tokenError.value = ''
-  tokenInput.value = ''
+  loginLoading.value = true
+  loginError.value = ''
+  try {
+    await login(emailInput.value.trim(), passwordInput.value)
+    emailInput.value = ''
+    passwordInput.value = ''
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('invalid-credential') || msg.includes('wrong-password') || msg.includes('user-not-found')) {
+      loginError.value = 'E-Mail oder Passwort falsch.'
+    } else if (msg.includes('invalid-email')) {
+      loginError.value = 'Ungültige E-Mail-Adresse.'
+    } else if (msg.includes('too-many-requests')) {
+      loginError.value = 'Zu viele Versuche. Bitte später nochmal versuchen.'
+    } else {
+      loginError.value = 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
+    }
+  } finally {
+    loginLoading.value = false
+  }
 }
 </script>
 
 <template>
   <div id="app-root">
-    <!-- Token entry overlay -->
-    <div v-if="pendingRole" class="role-screen">
+    <!-- Loading splash -->
+    <div v-if="authState.loading" class="role-screen">
+      <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Login screen -->
+    <div v-else-if="!authState.authenticated" class="role-screen">
       <div class="role-card">
         <div class="brand">
           <span class="brand-diamond">&#9670;</span>
           <span class="brand-name">CDM</span>
         </div>
-        <p class="brand-sub">API-Token eingeben</p>
+        <p class="brand-sub">Container- &amp; Mulden-Management</p>
+        <p class="brand-by">von Coflnet</p>
 
-        <div v-if="tokenError" class="alert-inline">{{ tokenError }}</div>
+        <div v-if="loginError" class="alert-inline">{{ loginError }}</div>
 
-        <div class="form-group" style="text-align:left;margin-top:1.5rem">
-          <label>Bearer Token</label>
+        <div class="form-group">
+          <label>E-Mail</label>
           <input
-            v-model="tokenInput"
-            type="password"
-            placeholder="eyJ..."
-            autofocus
-            @keyup.enter="submitToken"
+            v-model="emailInput"
+            type="email"
+            placeholder="name@firma.de"
+            autocomplete="email"
+            @keyup.enter="submitLogin"
           />
-          <p class="hint">Dein JWT aus dem Firebase-Login oder der API-Dokumentation.</p>
         </div>
 
-        <div class="row mt-3" style="gap:0.75rem">
-          <button class="btn-ghost btn-block" @click="cancelToken">Zurück</button>
-          <button class="btn-primary btn-block" @click="submitToken">Anmelden</button>
+        <div class="form-group">
+          <label>Passwort</label>
+          <input
+            v-model="passwordInput"
+            type="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            @keyup.enter="submitLogin"
+          />
         </div>
+
+        <button
+          class="btn-primary btn-block mt-4"
+          :disabled="loginLoading"
+          @click="submitLogin"
+        >
+          <span v-if="loginLoading" class="btn-spinner"></span>
+          <span v-else>Anmelden</span>
+        </button>
       </div>
     </div>
 
@@ -80,7 +102,7 @@ function cancelToken() {
         <p class="choose-label">Wer bist du?</p>
 
         <div class="role-options">
-          <button class="role-btn" @click="chooseRole('customer')">
+          <button class="role-btn" @click="selectRole('customer')">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
             </span>
@@ -88,7 +110,7 @@ function cancelToken() {
             <span class="role-desc">Container verwalten &amp; Abholungen planen</span>
           </button>
 
-          <button class="role-btn" @click="chooseRole('driver')">
+          <button class="role-btn" @click="selectRole('driver')">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
             </span>
@@ -96,6 +118,8 @@ function cancelToken() {
             <span class="role-desc">Abholwarteschlange &amp; Navigation zu Standorten</span>
           </button>
         </div>
+
+        <button class="btn-ghost btn-block mt-4" style="font-size:0.82rem" @click="logout">Abmelden</button>
       </div>
     </div>
 
@@ -174,6 +198,24 @@ function cancelToken() {
   margin-bottom: 2rem;
 }
 
+.form-group {
+  text-align: left;
+  margin-top: 1.1rem;
+}
+.form-group label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 0.4rem;
+}
+.form-group input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .choose-label {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -249,12 +291,34 @@ function cancelToken() {
   margin-top: 0.75rem;
 }
 
-.hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin-top: 0.4rem;
-  text-align: left;
+.mt-4 { margin-top: 1.5rem; }
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-card);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
 }
 
-.mt-3 { margin-top: 1.25rem; }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.btn-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 </style>
