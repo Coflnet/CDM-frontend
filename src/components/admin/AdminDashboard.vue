@@ -62,9 +62,8 @@ function openAssign(orderId: string, current: string | null) {
 async function confirmAssign(orderId: string) {
   if (!assignDriverId.value) return
   try {
-    const updated = await adminApi.assignDriver(orderId, assignDriverId.value)
-    const idx = orders.value.findIndex(o => o.orderId === orderId)
-    if (idx >= 0) orders.value[idx] = updated
+    await adminApi.assignDriver(orderId, assignDriverId.value)
+    await load()
   } catch {
     // ignore
   }
@@ -73,16 +72,15 @@ async function confirmAssign(orderId: string) {
 
 async function doMarkPaid(invoiceId: string) {
   try {
-    const updated = await invoiceApi.markPaid(invoiceId)
-    const idx = allInvoices.value.findIndex(i => i.invoiceId === invoiceId)
-    if (idx >= 0) allInvoices.value[idx] = updated
+    await invoiceApi.markPaid(invoiceId)
+    await load()
   } catch {
     // ignore
   }
 }
 
-async function doMarkRetrieved(bookingId: string) {
-  markContainerRetrieved(bookingId)
+async function doMarkRetrieved(order: Order) {
+  order.bookingIds?.forEach(bookingId => markContainerRetrieved(bookingId))
   await load()
 }
 
@@ -176,7 +174,7 @@ function logLevelClass(level: ErrorLog['level']) {
                 <button
                   v-if="o.bookingIds?.length"
                   class="btn-success btn-sm"
-                  @click="o.bookingIds!.forEach(bk => doMarkRetrieved(bk))"
+                  @click="doMarkRetrieved(o)"
                 >
                   Abgeholt
                 </button>

@@ -10,6 +10,7 @@ const loading = ref(true)
 const activeTab = ref<'queue' | 'all'>('queue')
 const videoModal = ref<{ url: string; siteName: string } | null>(null)
 const anfahrtenMap = ref<Record<string, Anfahrt[]>>({})
+const notificationBanner = ref<{ tone: 'info' | 'error'; message: string } | null>(null)
 
 async function load() {
   loading.value = true
@@ -30,8 +31,26 @@ async function load() {
 onMounted(load)
 
 const queueTrips = computed(() =>
-  trips.value
+  Array.from(
+    trips.value
     .filter(t => t.bookingStatus === 'Delivered' || t.bookingStatus === 'Filling' || t.bookingStatus === 'EmptyRequested' || t.bookingStatus === 'Scheduled')
+    .reduce((activeTrips, trip) => {
+      const current = activeTrips.get(trip.bookingId)
+      if (!current) {
+        activeTrips.set(trip.bookingId, trip)
+        return activeTrips
+      }
+
+      const currentAt = new Date(current.scheduledAt).getTime()
+      const nextAt = new Date(trip.scheduledAt).getTime()
+      if (nextAt > currentAt || (nextAt === currentAt && trip.tripKind === 'pickup')) {
+        activeTrips.set(trip.bookingId, trip)
+      }
+
+      return activeTrips
+    }, new Map<string, DriverTrip>())
+    .values()
+  )
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
 )
 
@@ -43,10 +62,54 @@ function latestAnfahrt(siteId: string): Anfahrt | null {
   return anfahrtenMap.value[siteId]?.[0] ?? null
 }
 
-function openMaps(t: DriverTrip): void {
+async function sendNavigationNotification(t: DriverTrip): Promise<void> {
+  if (typeof Notification === 'undefined') {
+    notificationBanner.value = {
+      tone: 'error',
+      message: 'Browser notifications are not supported in this environment.',
+    }
+    return
+  }
+
+  try {
+    let permission = Notification.permission
+    if (permission === 'default') {
+      permission = await Notification.requestPermission()
+    }
+
+    if (permission !== 'granted') {
+      notificationBanner.value = {
+        tone: 'error',
+        message: 'Notification permission was not granted, so the demo notification was skipped.',
+      }
+      return
+    }
+
+    const destination = t.siteName ?? t.siteAddress ?? 'the destination'
+    const notification = new Notification('CDM demo notification', {
+      body: `${t.tripKind === 'pickup' ? 'Pickup' : 'Delivery'} navigation started for ${destination}.`,
+      tag: `cdm-navigation-${t.bookingId}`,
+    })
+    notification.onclick = () => window.focus()
+
+    notificationBanner.value = {
+      tone: 'info',
+      message: `Demo notification sent for ${destination}.`,
+    }
+  } catch (error) {
+    notificationBanner.value = {
+      tone: 'error',
+      message: error instanceof Error ? error.message : 'The demo notification could not be created.',
+    }
+  }
+}
+
+async function openMaps(t: DriverTrip): Promise<void> {
   const query = t.siteAddress || (t.siteLat && t.siteLon ? `${t.siteLat},${t.siteLon}` : '')
-  if (!query) return
-  window.open(`https://maps.google.com/?q=${encodeURIComponent(query)}`, '_blank')
+  if (query) {
+    window.open(`https://maps.google.com/?q=${encodeURIComponent(query)}`, '_blank')
+  }
+  await sendNavigationNotification(t)
 }
 
 function openVideo(t: DriverTrip): void {
@@ -77,6 +140,10 @@ function openVideo(t: DriverTrip): void {
         <div v-if="loading" class="spinner"></div>
 
         <div v-else>
+          <div v-if="notificationBanner" class="alert mb-3" :class="notificationBanner.tone === 'error' ? 'alert-error' : 'alert-info'">
+            {{ notificationBanner.message }}
+          </div>
+
           <div class="tabs row mb-3">
             <button :class="['tab', { active: activeTab === 'queue' }]" @click="activeTab = 'queue'">Meine Aufträge</button>
             <button :class="['tab', { active: activeTab === 'all' }]" @click="activeTab = 'all'">Alle Trips</button>
