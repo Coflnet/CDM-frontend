@@ -4,6 +4,8 @@ import { sitesApi } from '../../api'
 import type { Site, WasteType } from '../../api'
 import { useVideoRecorder } from '../../composables/useVideoRecorder'
 import { WASTE_TYPE_LABEL } from '../../utils'
+import { useBodyLock } from '../../composables/useBodyLock'
+useBodyLock()
 
 const props = defineProps<{ sites: Site[] }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'ordered'): void }>()

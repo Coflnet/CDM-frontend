@@ -4,6 +4,8 @@ import { containersApi, sitesApi } from '../../api'
 import type { CustomerContainerView, Site } from '../../api'
 import { useVideoRecorder } from '../../composables/useVideoRecorder'
 import { WASTE_TYPE_LABEL } from '../../utils'
+import { useBodyLock } from '../../composables/useBodyLock'
+useBodyLock()
 
 const props = defineProps<{ container: CustomerContainerView; site: Site }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()

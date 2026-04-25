@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { containersApi } from '../../api'
 import type { CustomerContainerView } from '../../api'
 import { fillColor, WASTE_TYPE_LABEL } from '../../utils'
+import { useBodyLock } from '../../composables/useBodyLock'
+useBodyLock()
 
 const props = defineProps<{ container: CustomerContainerView }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'updated'): void }>()

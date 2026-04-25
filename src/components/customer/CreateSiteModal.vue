@@ -2,6 +2,8 @@
 import { ref } from 'vue'
 import { sitesApi } from '../../api'
 import type { Site } from '../../api'
+import { useBodyLock } from '../../composables/useBodyLock'
+useBodyLock()
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'created', site: Site): void }>()
 

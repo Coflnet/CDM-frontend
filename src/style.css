@@ -262,18 +262,30 @@ label {
 
 .content-with-nav { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
 
+/* Prevent background scroll when a modal is open */
+body.modal-open {
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+}
+
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0,0,0,0.8);
   z-index: 200;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   padding: 0;
+  /* Let the overlay itself scroll if needed so the modal is always reachable */
+  overflow-y: auto;
 }
 @media (min-width: 600px) {
-  .modal-overlay { align-items: center; padding: 1rem; }
+  .modal-overlay {
+    align-items: center;
+    padding: 1rem;
+  }
 }
 .modal {
   background: #1a1a1a;
@@ -282,12 +294,18 @@ label {
   padding: 1.25rem 1rem;
   width: 100%;
   max-width: 560px;
-  max-height: 90vh;
+  /* Cap to viewport minus safe-area top + a small gap */
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 1rem);
   overflow-y: auto;
   overflow-x: hidden;
+  /* Prevent the modal from shrinking below its content */
+  flex-shrink: 0;
 }
 @media (min-width: 600px) {
-  .modal { border-radius: var(--radius-lg); }
+  .modal {
+    border-radius: var(--radius-lg);
+    max-height: calc(100dvh - 2rem);
+  }
 }
 .modal-header {
   display: flex;

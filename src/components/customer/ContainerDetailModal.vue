@@ -3,6 +3,8 @@ import { ref, onMounted, computed } from 'vue'
 import { sitesApi } from '../../api'
 import type { CustomerContainerView, Site, Anfahrt } from '../../api'
 import { fillColor, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
+import { useBodyLock } from '../../composables/useBodyLock'
+useBodyLock()
 
 const props = defineProps<{ container: CustomerContainerView; site: Site }>()
 const emit = defineEmits<{
@@ -114,7 +116,7 @@ const latestAnfahrt = computed(() => anfahrten.value[0] ?? null)
 </template>
 
 <style scoped>
-.modal-detail { max-height: 90vh; overflow-y: auto; }
+.modal-detail { }
 .detail-hero {
   background: #181818;
   border-radius: var(--radius-sm);

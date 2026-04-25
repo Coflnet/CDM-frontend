@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { useBodyLock } from '../../composables/useBodyLock'
 defineProps<{ videoUrl: string; siteName: string }>()
 const emit = defineEmits<{ (e: 'close'): void }>()
+useBodyLock()
 </script>
 
 <template>
