@@ -1,6 +1,3 @@
-# Multi-stage build for the CDM (Container Dispatch & Management) frontend.
-# Stage 1: build the Vite/Vue SPA. Stage 2: serve the static bundle with nginx.
-
 FROM node:22-alpine AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
