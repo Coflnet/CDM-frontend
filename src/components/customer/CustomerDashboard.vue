@@ -89,26 +89,13 @@ async function loadInvoices() {
         <div v-else-if="error" class="alert alert-error">{{ error }}</div>
 
         <div v-else>
-          <div class="summary-chips row mb-3">
-            <div class="chip">
-              <span class="chip-val">{{ activeContainers.length }}</span>
-              <span class="chip-label">Aktiv</span>
+          <div class="tabs-scroll" style="margin-top:0.5rem;margin-bottom:1rem">
+            <div class="tabs">
+              <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
+              <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
+              <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Standorte</button>
+              <button :class="['tab', { active: activeTab === 'invoices' }]" @click="activeTab = 'invoices'; loadInvoices()">Rechnungen</button>
             </div>
-            <div v-if="upcomingPickups.length" class="chip chip-warn">
-              <span class="chip-val">{{ upcomingPickups.length }}</span>
-              <span class="chip-label">Abholung</span>
-            </div>
-            <div class="chip">
-              <span class="chip-val">{{ sites.length }}</span>
-              <span class="chip-label">Standorte</span>
-            </div>
-          </div>
-
-          <div class="tabs row" style="margin-top:1rem;margin-bottom:1rem">
-            <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
-            <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
-            <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Standorte</button>
-            <button :class="['tab', { active: activeTab === 'invoices' }]" @click="activeTab = 'invoices'; loadInvoices()">Rechnungen</button>
           </div>
 
           <!-- Containers tab -->
@@ -251,10 +238,6 @@ async function loadInvoices() {
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         Standorte
       </button>
-      <button class="bottom-nav-item" :class="{ active: activeTab === 'invoices' }" @click="activeTab = 'invoices'; loadInvoices()">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-        Rechnungen
-      </button>
       <button class="bottom-nav-item" @click="showOrder = true">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
         Bestellen
@@ -308,24 +291,24 @@ async function loadInvoices() {
 
 <style scoped>
 .dash-greeting { font-size: 1.25rem; }
-.summary-chips { gap: 0.6rem; flex-wrap: wrap; }
-.chip {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  border-radius: var(--radius-sm);
-  padding: 0.45rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-width: 60px;
+.tabs-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  /* hide scrollbar but keep scrollability */
+  scrollbar-width: none;
 }
-.chip-warn { border-color: rgba(230,126,34,0.4); }
-.chip-val { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
-.chip-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
-.tabs { gap: 0.5rem; background: #181818; border-radius: var(--radius-sm); padding: 0.3rem; }
+.tabs-scroll::-webkit-scrollbar { display: none; }
+.tabs {
+  display: flex;
+  gap: 0.4rem;
+  background: #181818;
+  border-radius: var(--radius-sm);
+  padding: 0.3rem;
+  min-width: max-content;
+}
 .tab {
-  flex: 1;
-  padding: 0.45rem 0.5rem;
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
   border-radius: 6px;
   font-size: 0.8rem;
   font-weight: 600;
@@ -334,6 +317,7 @@ async function loadInvoices() {
   border: none;
   cursor: pointer;
   transition: all 0.15s;
+  white-space: nowrap;
 }
 .tab.active {
   background: var(--bg-card);
