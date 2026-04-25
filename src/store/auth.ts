@@ -2,7 +2,7 @@ import { reactive } from 'vue'
 import { firebaseSignIn, firebaseSignUp, firebaseSignOut, onFirebaseAuthStateChanged, getFirebaseIdToken } from '../firebase'
 import { setToken, clearToken } from '../api'
 
-export type UserRole = 'customer' | 'driver'
+export type UserRole = 'customer' | 'driver' | 'admin'
 
 interface AuthState {
   role: UserRole | null
@@ -21,10 +21,12 @@ onFirebaseAuthStateChanged(async (user) => {
     const token = await user.getIdToken()
     setToken(token)
     authState.authenticated = true
+    restoreRole()
   } else {
     clearToken()
     authState.authenticated = false
     authState.role = null
+    localStorage.removeItem('cdm_role')
   }
   authState.loading = false
 })
@@ -56,11 +58,23 @@ export async function register(email: string, password: string): Promise<void> {
 
 export function selectRole(role: UserRole): void {
   authState.role = role
+  localStorage.setItem('cdm_role', role)
+}
+
+export function restoreRole(): void {
+  const saved = localStorage.getItem('cdm_role') as UserRole | null
+  if (saved) authState.role = saved
+}
+
+export function clearSavedRole(): void {
+  localStorage.removeItem('cdm_role')
+  authState.role = null
 }
 
 export async function logout(): Promise<void> {
   await firebaseSignOut()
   clearToken()
+  localStorage.removeItem('cdm_role')
   authState.authenticated = false
   authState.role = null
 }

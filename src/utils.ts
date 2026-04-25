@@ -1,4 +1,11 @@
-import type { BookingStatus } from './api'
+import type { BookingStatus, WasteType } from './api'
+
+// Heavy materials: effective fill cap is 25% of physical volume
+export const HEAVY_WASTE_TYPES: WasteType[] = ['Metal', 'Concrete', 'Electronics']
+
+export function effectiveMaxFill(wasteType: WasteType): number {
+  return HEAVY_WASTE_TYPES.includes(wasteType) ? 25 : 100
+}
 
 export function fillColor(pct: number): string {
   if (pct >= 80) return '#e74c3c'

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { authState, login, register, selectRole, logout } from './store/auth'
+import { authState, login, register, selectRole, logout, clearSavedRole } from './store/auth'
 import CustomerDashboard from './components/customer/CustomerDashboard.vue'
 import DriverDashboard from './components/driver/DriverDashboard.vue'
+import AdminDashboard from './components/admin/AdminDashboard.vue'
 
 type AuthView = 'login' | 'signup'
 const authView = ref<AuthView>('login')
@@ -229,6 +230,14 @@ async function submitSignup() {
             <span class="role-title">Fahrer</span>
             <span class="role-desc">Abholwarteschlange &amp; Navigation zu Standorten</span>
           </button>
+
+          <button class="role-btn" @click="selectRole('admin')">
+            <span class="role-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </span>
+            <span class="role-title">Admin</span>
+            <span class="role-desc">Aufträge zuweisen, Fehlerprotokoll &amp; Rechnungen</span>
+          </button>
         </div>
 
         <button class="btn-ghost btn-block mt-4" style="font-size:0.82rem" @click="logout">Abmelden</button>
@@ -240,15 +249,16 @@ async function submitSignup() {
       <header class="app-header">
         <div class="app-header-title">
           <span class="logo-accent"></span>
-          CDM &mdash; {{ authState.role === 'driver' ? 'Fahreransicht' : 'Kundenportal' }}
+          CDM &mdash; {{ authState.role === 'driver' ? 'Fahreransicht' : authState.role === 'admin' ? 'Administration' : 'Kundenportal' }}
         </div>
         <div class="header-actions">
-          <button class="btn-ghost btn-sm" @click="authState.role = null">Rolle</button>
+          <button class="btn-ghost btn-sm" @click="clearSavedRole()">Rolle</button>
           <button class="btn-ghost btn-sm" @click="logout">Abmelden</button>
         </div>
       </header>
       <CustomerDashboard v-if="authState.role === 'customer'" />
-      <DriverDashboard v-else />
+      <DriverDashboard v-else-if="authState.role === 'driver'" />
+      <AdminDashboard v-else-if="authState.role === 'admin'" />
     </template>
   </div>
 </template>

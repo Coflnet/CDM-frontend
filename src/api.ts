@@ -114,11 +114,38 @@ export interface Order {
   notes: string | null
   bookingIds: string[] | null
   status: BookingStatus
+  assignedDriverId: string | null
+}
+
+export interface Invoice {
+  invoiceId: string
+  customerId: string
+  bookingId: string
+  siteId: string
+  wasteType: WasteType
+  siteName: string | null
+  issuedAt: string
+  amount: number
+  currency: string
+  status: 'unpaid' | 'paid'
+}
+
+export interface ErrorLog {
+  logId: string
+  occurredAt: string
+  level: 'error' | 'warn' | 'info'
+  message: string
+  context: string | null
+}
+
+export interface Driver {
+  driverId: string
+  name: string
 }
 
 // ---- In-memory mock store ----
 
-import { SITES, CONTAINERS, DRIVER_TRIPS, ANFAHRTEN } from './mockData'
+import { SITES, CONTAINERS, DRIVER_TRIPS, ANFAHRTEN, MOCK_ORDERS, MOCK_INVOICES, MOCK_ERROR_LOGS, MOCK_DRIVERS } from './mockData'
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10)
@@ -134,6 +161,13 @@ const driverTrips: DriverTrip[] = [...DRIVER_TRIPS]
 const anfahrtenMap: Record<string, Anfahrt[]> = Object.fromEntries(
   Object.entries(ANFAHRTEN).map(([k, v]) => [k, [...v]])
 )
+const orders: Order[] = [...MOCK_ORDERS]
+const invoices: Invoice[] = [...MOCK_INVOICES]
+const errorLogs: ErrorLog[] = [...MOCK_ERROR_LOGS]
+const drivers: Driver[] = [...MOCK_DRIVERS]
+
+// in-memory video URLs keyed by anfahrtId
+const videoUrls: Record<string, string> = {}
 
 // ---- Sites API ----
 
@@ -223,7 +257,7 @@ export const sitesApi = {
       return bkId
     })
 
-    return delay({
+    const order: Order = {
       orderId,
       customerId: 'cust-demo',
       siteId,
@@ -232,34 +266,43 @@ export const sitesApi = {
       notes: body.notes ?? null,
       bookingIds,
       status: 'Requested' as BookingStatus,
-    })
+      assignedDriverId: null,
+    }
+    orders.push(order)
+    return delay(order)
   },
 
   listAnfahrten(siteId: string): Promise<Anfahrt[]> {
     return delay([...(anfahrtenMap[siteId] ?? [])])
   },
 
-  uploadAnfahrt(siteId: string, _form: FormData): Promise<Anfahrt> {
+  uploadAnfahrt(siteId: string, form: FormData): Promise<Anfahrt> {
     const site = sites.find(s => s.siteId === siteId)
+    const anfahrtId = `anf-${uid()}`
     const anfahrt: Anfahrt = {
       siteId,
-      anfahrtId: `anf-${uid()}`,
+      anfahrtId,
       uploadedByUserId: 'cust-demo',
       uploadedAt: new Date().toISOString(),
       lat: site?.lat ?? 0,
       lon: site?.lon ?? 0,
       orientationNote: null,
-      videoStorageKey: null,
-      videoContentType: null,
+      videoStorageKey: anfahrtId,
+      videoContentType: 'video/webm',
       videoSizeBytes: 0,
+    }
+    // Store an object URL so the video can be played back in-session
+    const blob = form.get('video')
+    if (blob instanceof Blob) {
+      videoUrls[anfahrtId] = URL.createObjectURL(blob)
     }
     if (!anfahrtenMap[siteId]) anfahrtenMap[siteId] = []
     anfahrtenMap[siteId].unshift(anfahrt)
     return delay(anfahrt)
   },
 
-  videoUrl(_siteId: string, _anfahrtId: string): string {
-    return ''
+  videoUrl(_siteId: string, anfahrtId: string): string {
+    return videoUrls[anfahrtId] ?? ''
   },
 }
 
@@ -354,4 +397,101 @@ export const driverApi = {
   trips(_days = 2): Promise<DriverTrip[]> {
     return delay([...driverTrips])
   },
+}
+
+// ---- Admin API ----
+
+export const adminApi = {
+  listOrders(): Promise<Order[]> {
+    return delay([...orders].reverse())
+  },
+
+  assignDriver(orderId: string, driverId: string): Promise<Order> {
+    const o = orders.find(x => x.orderId === orderId)
+    if (!o) return Promise.reject(new Error('Order not found'))
+    o.assignedDriverId = driverId
+    o.status = 'Scheduled'
+    // update the linked driver trips
+    if (o.bookingIds) {
+      o.bookingIds.forEach(bkId => {
+        driverTrips
+          .filter(t => t.bookingId === bkId)
+          .forEach(t => { t.driverUserId = driverId; t.bookingStatus = 'Scheduled' })
+        const c = containers.find(x => x.bookingId === bkId)
+        if (c) c.status = 'Scheduled'
+      })
+    }
+    return delay({ ...o })
+  },
+
+  listSites(): Promise<Site[]> {
+    return delay([...sites])
+  },
+
+  listContainers(): Promise<CustomerContainerView[]> {
+    return delay([...containers])
+  },
+
+  listErrorLogs(): Promise<ErrorLog[]> {
+    return delay([...errorLogs].reverse())
+  },
+
+  addErrorLog(level: ErrorLog['level'], message: string, context?: string): void {
+    errorLogs.push({
+      logId: `log-${uid()}`,
+      occurredAt: new Date().toISOString(),
+      level,
+      message,
+      context: context ?? null,
+    })
+  },
+
+  listDrivers(): Promise<Driver[]> {
+    return delay([...drivers])
+  },
+}
+
+// ---- Invoice API ----
+
+export const invoiceApi = {
+  listForCustomer(customerId: string): Promise<Invoice[]> {
+    return delay(invoices.filter(i => i.customerId === customerId).reverse())
+  },
+
+  listAll(): Promise<Invoice[]> {
+    return delay([...invoices].reverse())
+  },
+
+  markPaid(invoiceId: string): Promise<Invoice> {
+    const inv = invoices.find(i => i.invoiceId === invoiceId)
+    if (!inv) return Promise.reject(new Error('Invoice not found'))
+    inv.status = 'paid'
+    return delay({ ...inv })
+  },
+}
+
+// Create an invoice when a container is retrieved
+export function markContainerRetrieved(bookingId: string): void {
+  const c = containers.find(x => x.bookingId === bookingId)
+  if (!c) return
+  c.status = 'Retrieved'
+  const site = sites.find(s => s.siteId === c.siteId)
+  // Simple flat-rate pricing per waste type
+  const rates: Record<string, number> = {
+    Mixed: 320, Wood: 280, Metal: 450, Concrete: 550,
+    Paper: 180, Plastic: 220, Organic: 200, Electronics: 480,
+  }
+  const inv: Invoice = {
+    invoiceId: `inv-${uid()}`,
+    customerId: 'cust-demo',
+    bookingId,
+    siteId: c.siteId,
+    wasteType: c.wasteType,
+    siteName: site?.name ?? null,
+    issuedAt: new Date().toISOString(),
+    amount: rates[c.wasteType] ?? 300,
+    currency: 'EUR',
+    status: 'unpaid',
+  }
+  invoices.push(inv)
 }

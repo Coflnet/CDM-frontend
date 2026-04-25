@@ -21,7 +21,12 @@ const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = reco
 onMounted(() => {
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
-  preferredAt.value = tomorrow.toISOString().slice(0, 16)
+  // snap to nearest 5-minute boundary
+  const mins = tomorrow.getMinutes()
+  tomorrow.setMinutes(Math.ceil(mins / 5) * 5, 0, 0)
+  // format as local datetime string (YYYY-MM-DDTHH:MM)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  preferredAt.value = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}T${pad(tomorrow.getHours())}:${pad(tomorrow.getMinutes())}`
 })
 
 async function save() {
@@ -67,7 +72,7 @@ async function save() {
 
         <div class="form-group">
           <label>Bevorzugtes Datum &amp; Uhrzeit</label>
-          <input type="datetime-local" v-model="preferredAt" />
+          <input type="datetime-local" v-model="preferredAt" step="300" />
         </div>
 
         <div class="video-section">

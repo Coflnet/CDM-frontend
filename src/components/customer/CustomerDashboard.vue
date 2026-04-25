@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { sitesApi, containersApi } from '../../api'
-import type { Site, CustomerContainerView } from '../../api'
-import { fillColor, formatDateTime, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
+import { sitesApi, containersApi, invoiceApi } from '../../api'
+import type { Site, CustomerContainerView, Invoice } from '../../api'
+import { fillColor, formatDateTime, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
 import ContainerCard from './ContainerCard.vue'
 import ContainerDetailModal from './ContainerDetailModal.vue'
 import SchedulePickupModal from './SchedulePickupModal.vue'
@@ -15,7 +15,7 @@ const containers = ref<CustomerContainerView[]>([])
 const loading = ref(true)
 const error = ref('')
 
-const activeTab = ref<'containers' | 'pickups' | 'sites'>('containers')
+const activeTab = ref<'containers' | 'pickups' | 'sites' | 'invoices'>('containers')
 const detailTarget = ref<{ container: CustomerContainerView; site: Site } | null>(null)
 const scheduleTarget = ref<{ container: CustomerContainerView; site: Site } | null>(null)
 const fillTarget = ref<CustomerContainerView | null>(null)
@@ -42,7 +42,7 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => { load(); loadInvoices() })
 
 function siteForContainer(c: CustomerContainerView): Site | undefined {
   return sites.value.find(s => s.siteId === c.siteId)
@@ -65,6 +65,12 @@ const upcomingPickups = computed(() =>
 )
 
 const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
+
+const invoices = ref<Invoice[]>([])
+
+async function loadInvoices() {
+  invoices.value = await invoiceApi.listForCustomer('cust-demo')
+}
 </script>
 
 <template>
@@ -102,6 +108,7 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
             <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
             <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
             <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Standorte</button>
+            <button :class="['tab', { active: activeTab === 'invoices' }]" @click="activeTab = 'invoices'; loadInvoices()">Rechnungen</button>
           </div>
 
           <!-- Containers tab -->
@@ -205,6 +212,28 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
               </div>
             </div>
           </div>
+          <!-- Invoices tab -->
+          <div v-if="activeTab === 'invoices'">
+            <div v-if="invoices.length === 0" class="empty-state">
+              <div class="icon">&#129534;</div>
+              <p>Noch keine Rechnungen vorhanden.</p>
+            </div>
+            <div v-else class="stack">
+              <div v-for="inv in invoices" :key="inv.invoiceId" class="card invoice-card">
+                <div class="row-between mb-1">
+                  <div class="inv-info">
+                    <h3>{{ WASTE_TYPE_LABEL[inv.wasteType] }}</h3>
+                    <p class="text-sm text-muted">{{ inv.siteName ?? inv.siteId }}</p>
+                  </div>
+                  <span class="badge badge-shrink" :class="inv.status === 'paid' ? 'badge-green' : 'badge-orange'">
+                    {{ inv.status === 'paid' ? 'Bezahlt' : 'Offen' }}
+                  </span>
+                </div>
+                <div class="invoice-amount">{{ inv.amount.toFixed(2) }} {{ inv.currency }}</div>
+                <p class="text-sm text-muted">Ausgestellt: {{ formatDate(inv.issuedAt) }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -221,6 +250,10 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
       <button class="bottom-nav-item" :class="{ active: activeTab === 'sites' }" @click="activeTab = 'sites'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
         Standorte
+      </button>
+      <button class="bottom-nav-item" :class="{ active: activeTab === 'invoices' }" @click="activeTab = 'invoices'; loadInvoices()">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        Rechnungen
       </button>
       <button class="bottom-nav-item" @click="showOrder = true">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -329,4 +362,8 @@ const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
 .font-semibold { font-weight: 600; }
 .icon-btn { padding: 0.3rem 0.4rem; }
 .mt-2 { margin-top: 1rem; }
+.invoice-card .inv-info { min-width: 0; flex: 1; overflow: hidden; }
+.invoice-card .inv-info h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-shrink { flex-shrink: 0; }
+.invoice-amount { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.15rem; }
 </style>

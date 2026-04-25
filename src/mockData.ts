@@ -1,4 +1,4 @@
-import type { Site, CustomerContainerView, DriverTrip, Anfahrt } from './api'
+import type { Site, CustomerContainerView, DriverTrip, Anfahrt, Order, Invoice, ErrorLog, Driver } from './api'
 
 export const SITES: Site[] = [
   {
@@ -172,3 +172,84 @@ export const ANFAHRTEN: Record<string, Anfahrt[]> = {
   'site-002': [],
   'site-003': [],
 }
+
+export const MOCK_DRIVERS: Driver[] = [
+  { driverId: 'driver-demo', name: 'Hans Müller' },
+  { driverId: 'driver-002', name: 'Klaus Wagner' },
+  { driverId: 'driver-003', name: 'Petra Schmidt' },
+]
+
+export const MOCK_ORDERS: Order[] = [
+  {
+    orderId: 'ord-001',
+    customerId: 'cust-demo',
+    siteId: 'site-001',
+    createdAt: '2026-04-22T09:15:00Z',
+    requestedDeliveryAt: '2026-04-25T08:00:00Z',
+    notes: 'Bitte früh morgens liefern.',
+    bookingIds: ['bk-001', 'bk-002'],
+    status: 'Filling',
+    assignedDriverId: 'driver-demo',
+  },
+  {
+    orderId: 'ord-002',
+    customerId: 'cust-demo',
+    siteId: 'site-002',
+    createdAt: '2026-04-23T14:00:00Z',
+    requestedDeliveryAt: '2026-04-26T10:00:00Z',
+    notes: null,
+    bookingIds: ['bk-003'],
+    status: 'Requested',
+    assignedDriverId: null,
+  },
+  {
+    orderId: 'ord-003',
+    customerId: 'cust-demo',
+    siteId: 'site-003',
+    createdAt: '2026-04-24T11:30:00Z',
+    requestedDeliveryAt: null,
+    notes: 'Betonschutt, schwer.',
+    bookingIds: ['bk-004'],
+    status: 'Scheduled',
+    assignedDriverId: 'driver-002',
+  },
+]
+
+export const MOCK_INVOICES: Invoice[] = [
+  {
+    invoiceId: 'inv-001',
+    customerId: 'cust-demo',
+    bookingId: 'bk-005',
+    siteId: 'site-002',
+    wasteType: 'Paper',
+    siteName: 'Lager Schönhauser Allee',
+    issuedAt: '2026-04-10T16:00:00Z',
+    amount: 180,
+    currency: 'EUR',
+    status: 'paid',
+  },
+]
+
+export const MOCK_ERROR_LOGS: ErrorLog[] = [
+  {
+    logId: 'log-001',
+    occurredAt: '2026-04-24T22:10:00Z',
+    level: 'warn',
+    message: 'Anfahrt video upload failed for site-002 — no video provided.',
+    context: 'uploadAnfahrt',
+  },
+  {
+    logId: 'log-002',
+    occurredAt: '2026-04-23T08:45:00Z',
+    level: 'error',
+    message: 'Fill level update rejected: booking bk-999 not found.',
+    context: 'updateFill',
+  },
+  {
+    logId: 'log-003',
+    occurredAt: '2026-04-22T14:00:00Z',
+    level: 'info',
+    message: 'New order ord-002 created by cust-demo.',
+    context: 'createOrder',
+  },
+]

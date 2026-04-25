@@ -90,11 +90,11 @@ function openVideo(t: DriverTrip): void {
             <div v-else class="stack">
               <div v-for="t in queueTrips" :key="t.bookingId + t.scheduledAt" class="card pickup-card">
                 <div class="row-between mb-1">
-                  <div>
-                    <h3>{{ WASTE_TYPE_LABEL[t.wasteType] }} — {{ t.siteName ?? '—' }}</h3>
+                  <div class="card-title-wrap">
+                    <h3 class="card-h3">{{ WASTE_TYPE_LABEL[t.wasteType] }} — {{ t.siteName ?? '—' }}</h3>
                     <p class="text-sm text-muted">{{ t.tripKind === 'delivery' ? 'Lieferung' : 'Abholung' }}</p>
                   </div>
-                  <span class="badge" :class="BOOKING_STATUS_BADGE[t.bookingStatus]">
+                  <span class="badge badge-shrink" :class="BOOKING_STATUS_BADGE[t.bookingStatus]">
                     {{ BOOKING_STATUS_LABEL[t.bookingStatus] }}
                   </span>
                 </div>
@@ -130,11 +130,11 @@ function openVideo(t: DriverTrip): void {
             <div v-else class="stack">
               <div v-for="t in allTrips" :key="t.bookingId + t.scheduledAt" class="card">
                 <div class="row-between">
-                  <div>
-                    <h3>{{ WASTE_TYPE_LABEL[t.wasteType] }} — {{ t.siteName ?? '—' }}</h3>
+                  <div class="card-title-wrap">
+                    <h3 class="card-h3">{{ WASTE_TYPE_LABEL[t.wasteType] }} — {{ t.siteName ?? '—' }}</h3>
                     <p class="text-sm text-muted">{{ formatDateTime(t.scheduledAt) }}</p>
                   </div>
-                  <span class="badge" :class="BOOKING_STATUS_BADGE[t.bookingStatus]">
+                  <span class="badge badge-shrink" :class="BOOKING_STATUS_BADGE[t.bookingStatus]">
                     {{ BOOKING_STATUS_LABEL[t.bookingStatus] }}
                   </span>
                 </div>
@@ -189,4 +189,7 @@ function openVideo(t: DriverTrip): void {
 .tab.active { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-card); }
 .mt-1 { margin-top: 0.5rem; }
 .action-row button { flex: 1; min-width: 100px; justify-content: center; }
+.card-title-wrap { min-width: 0; flex: 1; overflow: hidden; }
+.card-h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge-shrink { flex-shrink: 0; }
 </style>
