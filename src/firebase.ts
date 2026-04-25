@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app'
 import {
   getAuth,
   signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
   type User,
@@ -21,6 +22,11 @@ export const auth = getAuth(app)
 
 export async function firebaseSignIn(email: string, password: string): Promise<User> {
   const cred = await signInWithEmailAndPassword(auth, email, password)
+  return cred.user
+}
+
+export async function firebaseSignUp(email: string, password: string): Promise<User> {
+  const cred = await createUserWithEmailAndPassword(auth, email, password)
   return cred.user
 }
 

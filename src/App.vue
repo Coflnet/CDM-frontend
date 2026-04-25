@@ -1,38 +1,82 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { authState, login, selectRole, logout } from './store/auth'
+import { authState, login, register, selectRole, logout } from './store/auth'
 import CustomerDashboard from './components/customer/CustomerDashboard.vue'
 import DriverDashboard from './components/driver/DriverDashboard.vue'
 
+type AuthView = 'login' | 'signup'
+const authView = ref<AuthView>('login')
+
 const emailInput = ref('')
 const passwordInput = ref('')
-const loginError = ref('')
-const loginLoading = ref(false)
+const confirmPasswordInput = ref('')
+const authError = ref('')
+const authLoading = ref(false)
+
+function switchView(view: AuthView) {
+  authView.value = view
+  emailInput.value = ''
+  passwordInput.value = ''
+  confirmPasswordInput.value = ''
+  authError.value = ''
+}
+
+function mapFirebaseError(msg: string, isSignup: boolean): string {
+  if (msg.includes('invalid-credential') || msg.includes('wrong-password') || msg.includes('user-not-found'))
+    return 'E-Mail oder Passwort falsch.'
+  if (msg.includes('email-already-in-use'))
+    return 'Diese E-Mail-Adresse ist bereits registriert.'
+  if (msg.includes('invalid-email'))
+    return 'Ungültige E-Mail-Adresse.'
+  if (msg.includes('weak-password'))
+    return 'Passwort muss mindestens 6 Zeichen lang sein.'
+  if (msg.includes('too-many-requests'))
+    return 'Zu viele Versuche. Bitte später nochmal versuchen.'
+  return isSignup ? 'Registrierung fehlgeschlagen. Bitte erneut versuchen.' : 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
+}
 
 async function submitLogin() {
   if (!emailInput.value.trim() || !passwordInput.value) {
-    loginError.value = 'Bitte E-Mail und Passwort eingeben.'
+    authError.value = 'Bitte E-Mail und Passwort eingeben.'
     return
   }
-  loginLoading.value = true
-  loginError.value = ''
+  authLoading.value = true
+  authError.value = ''
   try {
     await login(emailInput.value.trim(), passwordInput.value)
     emailInput.value = ''
     passwordInput.value = ''
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e)
-    if (msg.includes('invalid-credential') || msg.includes('wrong-password') || msg.includes('user-not-found')) {
-      loginError.value = 'E-Mail oder Passwort falsch.'
-    } else if (msg.includes('invalid-email')) {
-      loginError.value = 'Ungültige E-Mail-Adresse.'
-    } else if (msg.includes('too-many-requests')) {
-      loginError.value = 'Zu viele Versuche. Bitte später nochmal versuchen.'
-    } else {
-      loginError.value = 'Anmeldung fehlgeschlagen. Bitte erneut versuchen.'
-    }
+    authError.value = mapFirebaseError(e instanceof Error ? e.message : String(e), false)
   } finally {
-    loginLoading.value = false
+    authLoading.value = false
+  }
+}
+
+async function submitSignup() {
+  if (!emailInput.value.trim() || !passwordInput.value) {
+    authError.value = 'Bitte E-Mail und Passwort eingeben.'
+    return
+  }
+  if (passwordInput.value !== confirmPasswordInput.value) {
+    authError.value = 'Passwörter stimmen nicht überein.'
+    return
+  }
+  if (passwordInput.value.length < 6) {
+    authError.value = 'Passwort muss mindestens 6 Zeichen lang sein.'
+    return
+  }
+  authLoading.value = true
+  authError.value = ''
+  try {
+    await register(emailInput.value.trim(), passwordInput.value)
+    emailInput.value = ''
+    passwordInput.value = ''
+    confirmPasswordInput.value = ''
+  } catch (e: unknown) {
+    authError.value = mapFirebaseError(e instanceof Error ? e.message : String(e), true)
+  } finally {
+    authLoading.value = false
   }
 }
 </script>
@@ -44,7 +88,7 @@ async function submitLogin() {
       <div class="loading-spinner"></div>
     </div>
 
-    <!-- Login screen -->
+    <!-- Login / Signup screen -->
     <div v-else-if="!authState.authenticated" class="role-screen">
       <div class="role-card">
         <div class="brand">
@@ -54,38 +98,95 @@ async function submitLogin() {
         <p class="brand-sub">Container- &amp; Mulden-Management</p>
         <p class="brand-by">von Coflnet</p>
 
-        <div v-if="loginError" class="alert-inline">{{ loginError }}</div>
-
-        <div class="form-group">
-          <label>E-Mail</label>
-          <input
-            v-model="emailInput"
-            type="email"
-            placeholder="name@firma.de"
-            autocomplete="email"
-            @keyup.enter="submitLogin"
-          />
+        <!-- Tab switcher -->
+        <div class="auth-tabs">
+          <button
+            class="auth-tab"
+            :class="{ active: authView === 'login' }"
+            @click="switchView('login')"
+          >Anmelden</button>
+          <button
+            class="auth-tab"
+            :class="{ active: authView === 'signup' }"
+            @click="switchView('signup')"
+          >Registrieren</button>
         </div>
 
-        <div class="form-group">
-          <label>Passwort</label>
-          <input
-            v-model="passwordInput"
-            type="password"
-            placeholder="••••••••"
-            autocomplete="current-password"
-            @keyup.enter="submitLogin"
-          />
-        </div>
+        <div v-if="authError" class="alert-inline">{{ authError }}</div>
 
-        <button
-          class="btn-primary btn-block mt-4"
-          :disabled="loginLoading"
-          @click="submitLogin"
-        >
-          <span v-if="loginLoading" class="btn-spinner"></span>
-          <span v-else>Anmelden</span>
-        </button>
+        <!-- Login form -->
+        <template v-if="authView === 'login'">
+          <div class="form-group">
+            <label>E-Mail</label>
+            <input
+              v-model="emailInput"
+              type="email"
+              placeholder="name@firma.de"
+              autocomplete="email"
+              @keyup.enter="submitLogin"
+            />
+          </div>
+          <div class="form-group">
+            <label>Passwort</label>
+            <input
+              v-model="passwordInput"
+              type="password"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              @keyup.enter="submitLogin"
+            />
+          </div>
+          <button class="btn-primary btn-block mt-4" :disabled="authLoading" @click="submitLogin">
+            <span v-if="authLoading" class="btn-spinner"></span>
+            <span v-else>Anmelden</span>
+          </button>
+          <p class="auth-switch-hint">
+            Noch kein Konto?
+            <button class="link-btn" @click="switchView('signup')">Jetzt registrieren</button>
+          </p>
+        </template>
+
+        <!-- Signup form -->
+        <template v-else>
+          <div class="form-group">
+            <label>E-Mail</label>
+            <input
+              v-model="emailInput"
+              type="email"
+              placeholder="name@firma.de"
+              autocomplete="email"
+              @keyup.enter="submitSignup"
+            />
+          </div>
+          <div class="form-group">
+            <label>Passwort</label>
+            <input
+              v-model="passwordInput"
+              type="password"
+              placeholder="Mindestens 6 Zeichen"
+              autocomplete="new-password"
+              @keyup.enter="submitSignup"
+            />
+          </div>
+          <div class="form-group">
+            <label>Passwort bestätigen</label>
+            <input
+              v-model="confirmPasswordInput"
+              type="password"
+              placeholder="••••••••"
+              autocomplete="new-password"
+              @keyup.enter="submitSignup"
+            />
+          </div>
+          <button class="btn-primary btn-block mt-4" :disabled="authLoading" @click="submitSignup">
+            <span v-if="authLoading" class="btn-spinner"></span>
+            <span v-else>Konto erstellen</span>
+          </button>
+          <p class="auth-switch-hint">
+            Bereits ein Konto?
+            <button class="link-btn" @click="switchView('login')">Anmelden</button>
+          </p>
+        </template>
       </div>
     </div>
 
@@ -292,6 +393,50 @@ async function submitLogin() {
 }
 
 .mt-4 { margin-top: 1.5rem; }
+
+.auth-tabs {
+  display: flex;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+}
+.auth-tab {
+  flex: 1;
+  padding: 0.55rem 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+.auth-tab.active {
+  background: var(--accent-blue);
+  color: #fff;
+}
+.auth-tab:not(.active):hover {
+  background: rgba(58,143,212,0.1);
+  color: var(--text-primary);
+}
+
+.auth-switch-hint {
+  margin-top: 1.1rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent-blue-light);
+  cursor: pointer;
+  font-size: inherit;
+  font-weight: 600;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 .loading-spinner {
   width: 40px;

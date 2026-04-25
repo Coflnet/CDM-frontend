@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { firebaseSignIn, firebaseSignOut, onFirebaseAuthStateChanged, getFirebaseIdToken } from '../firebase'
+import { firebaseSignIn, firebaseSignUp, firebaseSignOut, onFirebaseAuthStateChanged, getFirebaseIdToken } from '../firebase'
 import { setToken, clearToken } from '../api'
 
 export type UserRole = 'customer' | 'driver'
@@ -45,6 +45,13 @@ export async function login(email: string, password: string): Promise<void> {
     const fresh = await user.getIdToken(true)
     setToken(fresh)
   }, 55 * 60 * 1000)
+}
+
+export async function register(email: string, password: string): Promise<void> {
+  const user = await firebaseSignUp(email, password)
+  const token = await user.getIdToken()
+  setToken(token)
+  authState.authenticated = true
 }
 
 export function selectRole(role: UserRole): void {
