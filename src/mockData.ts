@@ -117,6 +117,7 @@ export const DRIVER_TRIPS: DriverTrip[] = [
     siteLat: 52.5200,
     siteLon: 13.4050,
     createdAt: '2026-04-24T07:00:00Z',
+    reportCompletedAt: null,
   },
   {
     dayBucket: now.toISOString().slice(0, 10),
@@ -134,6 +135,7 @@ export const DRIVER_TRIPS: DriverTrip[] = [
     siteLat: 52.5370,
     siteLon: 13.4140,
     createdAt: '2026-04-24T07:00:00Z',
+    reportCompletedAt: null,
   },
   {
     dayBucket: tomorrow.toISOString().slice(0, 10),
@@ -151,6 +153,7 @@ export const DRIVER_TRIPS: DriverTrip[] = [
     siteLat: 52.4790,
     siteLon: 13.3460,
     createdAt: '2026-04-24T08:00:00Z',
+    reportCompletedAt: null,
   },
 ]
 
@@ -190,6 +193,7 @@ export const MOCK_ORDERS: Order[] = [
     bookingIds: ['bk-001', 'bk-002'],
     status: 'Filling',
     assignedDriverId: 'driver-demo',
+    reports: [],
   },
   {
     orderId: 'ord-002',
@@ -201,6 +205,7 @@ export const MOCK_ORDERS: Order[] = [
     bookingIds: ['bk-003'],
     status: 'Requested',
     assignedDriverId: null,
+    reports: [],
   },
   {
     orderId: 'ord-003',
@@ -212,6 +217,7 @@ export const MOCK_ORDERS: Order[] = [
     bookingIds: ['bk-004'],
     status: 'Scheduled',
     assignedDriverId: 'driver-002',
+    reports: [],
   },
 ]
 
@@ -229,6 +235,7 @@ export const MOCK_INVOICES: Invoice[] = [
     status: 'paid',
     weightKg: 1200,
     pricePerKg: 0.15,
+    damageCharge: null,
   },
 ]
 

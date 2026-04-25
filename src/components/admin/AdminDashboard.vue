@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { adminApi, invoiceApi, markContainerRetrieved } from '../../api'
-import type { Order, Invoice, ErrorLog, Driver, Site, CustomerContainerView } from '../../api'
+import type { Order, Invoice, ErrorLog, Driver, Site, CustomerContainerView, DriverReport } from '../../api'
 import { WASTE_TYPE_LABEL, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, formatDate, formatDateTime } from '../../utils'
 import WeightUploadModal from './WeightUploadModal.vue'
+import TripReportCard from '../shared/TripReportCard.vue'
 
 const activeTab = ref<'orders' | 'containers' | 'invoices' | 'logs'>('orders')
 
@@ -54,6 +55,14 @@ function siteName(siteId: string): string {
 function driverName(driverId: string | null): string {
   if (!driverId) return '—'
   return drivers.value.find(d => d.driverId === driverId)?.name ?? driverId
+}
+
+function containerForBooking(bookingId: string): CustomerContainerView | undefined {
+  return allContainers.value.find(container => container.bookingId === bookingId)
+}
+
+function sortedReports(order: Order): DriverReport[] {
+  return [...order.reports].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
 }
 
 function openAssign(orderId: string, current: string | null) {
@@ -160,6 +169,22 @@ function logLevelClass(level: ErrorLog['level']) {
                 <span v-for="bk in o.bookingIds" :key="bk" class="bk-tag">{{ bk }}</span>
               </div>
 
+              <div v-if="o.reports.length" class="report-section mb-2">
+                <p class="section-title" style="margin-bottom:0.55rem">Fahrerberichte</p>
+                <div class="stack report-stack">
+                  <TripReportCard
+                    v-for="report in sortedReports(o)"
+                    :key="report.reportId"
+                    :report="report"
+                    :waste-type="containerForBooking(report.bookingId)?.wasteType ?? 'Mixed'"
+                    :container-number="containerForBooking(report.bookingId)?.containerNumber ?? null"
+                    :site-name="siteName(o.siteId)"
+                    :booking-status="containerForBooking(report.bookingId)?.status ?? o.status"
+                  />
+                </div>
+              </div>
+              <p v-else class="text-sm text-muted mb-2">Noch kein Fahrerbericht vorhanden.</p>
+
               <!-- Assign driver -->
               <div v-if="assigningOrderId === o.orderId" class="assign-row">
                 <select v-model="assignDriverId" class="driver-select">
@@ -232,6 +257,9 @@ function logLevelClass(level: ErrorLog['level']) {
                   </span>
                 </div>
                 <div class="invoice-amount">{{ inv.amount.toFixed(2) }} {{ inv.currency }}</div>
+                <div v-if="inv.damageCharge" class="text-sm text-muted mb-1">
+                  Schadensbelastung: {{ inv.damageCharge.toFixed(2) }} EUR
+                </div>
                 <div v-if="inv.weightKg" class="weight-row text-sm text-muted mb-1">
                   <span>{{ inv.weightKg.toLocaleString('de-DE') }} kg</span>
                   <span class="weight-sep">·</span>
@@ -342,6 +370,9 @@ function logLevelClass(level: ErrorLog['level']) {
   gap: 0.4rem;
   flex-wrap: wrap;
   margin-top: 0.5rem;
+}
+.report-stack {
+  gap: 0.6rem;
 }
 .invoice-amount {
   font-size: 1.4rem;

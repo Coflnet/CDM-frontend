@@ -1,4 +1,4 @@
-import type { BookingStatus, WasteType } from './api'
+import type { BookingStatus, WasteType, DriverTripKind, DriverReportPhotoSide } from './api'
 
 // Heavy materials: effective fill cap is 25% of physical volume
 export const HEAVY_WASTE_TYPES: WasteType[] = ['Metal', 'Concrete', 'Electronics']
@@ -54,4 +54,16 @@ export const WASTE_TYPE_LABEL: Record<string, string> = {
   Plastic: 'Kunststoff',
   Organic: 'Organisch',
   Electronics: 'Elektronik',
+}
+
+export const TRIP_KIND_LABEL: Record<DriverTripKind, string> = {
+  delivery: 'Lieferung',
+  pickup: 'Abholung',
+}
+
+export const REPORT_PHOTO_SIDE_LABEL: Record<DriverReportPhotoSide, string> = {
+  front: 'Vorne',
+  right: 'Rechts',
+  back: 'Hinten',
+  left: 'Links',
 }

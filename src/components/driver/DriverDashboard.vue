@@ -2,8 +2,9 @@
 import { ref, onMounted, computed } from 'vue'
 import { driverApi, sitesApi } from '../../api'
 import type { DriverTrip, Anfahrt } from '../../api'
-import { formatDateTime, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
+import { formatDateTime, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL, TRIP_KIND_LABEL } from '../../utils'
 import DrivewayVideoModal from './DrivewaVideoModal.vue'
+import TripReportModal from './TripReportModal.vue'
 
 const trips = ref<DriverTrip[]>([])
 const loading = ref(true)
@@ -11,6 +12,7 @@ const activeTab = ref<'queue' | 'all'>('queue')
 const videoModal = ref<{ url: string; siteName: string } | null>(null)
 const anfahrtenMap = ref<Record<string, Anfahrt[]>>({})
 const notificationBanner = ref<{ tone: 'info' | 'error'; message: string } | null>(null)
+const reportTarget = ref<DriverTrip | null>(null)
 
 async function load() {
   loading.value = true
@@ -33,7 +35,7 @@ onMounted(load)
 const queueTrips = computed(() =>
   Array.from(
     trips.value
-    .filter(t => t.bookingStatus === 'Delivered' || t.bookingStatus === 'Filling' || t.bookingStatus === 'EmptyRequested' || t.bookingStatus === 'Scheduled')
+    .filter(t => !t.reportCompletedAt && (t.bookingStatus === 'Delivered' || t.bookingStatus === 'Filling' || t.bookingStatus === 'EmptyRequested' || t.bookingStatus === 'Scheduled'))
     .reduce((activeTrips, trip) => {
       const current = activeTrips.get(trip.bookingId)
       if (!current) {
@@ -62,29 +64,49 @@ function latestAnfahrt(siteId: string): Anfahrt | null {
   return anfahrtenMap.value[siteId]?.[0] ?? null
 }
 
-async function sendNavigationNotification(t: DriverTrip): Promise<void> {
+async function ensureNotificationPermission(): Promise<boolean> {
   if (typeof Notification === 'undefined') {
     notificationBanner.value = {
       tone: 'error',
       message: 'Browser notifications are not supported in this environment.',
     }
-    return
+    return false
   }
 
   try {
-    let permission = Notification.permission
-    if (permission === 'default') {
-      permission = await Notification.requestPermission()
+    if (Notification.permission === 'granted') {
+      return true
     }
 
-    if (permission !== 'granted') {
+    if (Notification.permission === 'default') {
+      const permission = await Notification.requestPermission()
+      if (permission === 'granted') {
+        return true
+      }
+
       notificationBanner.value = {
         tone: 'error',
         message: 'Notification permission was not granted, so the demo notification was skipped.',
       }
-      return
+      return false
     }
 
+    notificationBanner.value = {
+      tone: 'error',
+      message: 'Notifications are blocked for this browser. Please allow them and try again.',
+    }
+    return false
+  } catch (error) {
+    notificationBanner.value = {
+      tone: 'error',
+      message: error instanceof Error ? error.message : 'Notification permission could not be requested.',
+    }
+    return false
+  }
+}
+
+async function sendNavigationNotification(t: DriverTrip): Promise<void> {
+  try {
     const destination = t.siteName ?? t.siteAddress ?? 'the destination'
     const notification = new Notification('CDM demo notification', {
       body: `${t.tripKind === 'pickup' ? 'Pickup' : 'Delivery'} navigation started for ${destination}.`,
@@ -105,11 +127,14 @@ async function sendNavigationNotification(t: DriverTrip): Promise<void> {
 }
 
 async function openMaps(t: DriverTrip): Promise<void> {
+  const canNotify = await ensureNotificationPermission()
   const query = t.siteAddress || (t.siteLat && t.siteLon ? `${t.siteLat},${t.siteLon}` : '')
   if (query) {
     window.open(`https://maps.google.com/?q=${encodeURIComponent(query)}`, '_blank')
   }
-  await sendNavigationNotification(t)
+  if (canNotify) {
+    await sendNavigationNotification(t)
+  }
 }
 
 function openVideo(t: DriverTrip): void {
@@ -184,6 +209,9 @@ function openVideo(t: DriverTrip): void {
                   <button class="btn-ghost btn-sm" @click="openMaps(t)">
                     &#128506; Navigation
                   </button>
+                  <button class="btn-primary btn-sm" @click="reportTarget = t">
+                    {{ t.tripKind === 'delivery' ? 'Übergabebericht' : 'Rücknahmebericht' }}
+                  </button>
                 </div>
               </div>
             </div>
@@ -200,6 +228,7 @@ function openVideo(t: DriverTrip): void {
                   <div class="card-title-wrap">
                     <h3 class="card-h3">{{ WASTE_TYPE_LABEL[t.wasteType] }} — {{ t.siteName ?? '—' }}</h3>
                     <p class="text-sm text-muted">{{ formatDateTime(t.scheduledAt) }}</p>
+                    <p v-if="t.reportCompletedAt" class="text-sm text-muted">{{ TRIP_KIND_LABEL[t.tripKind!] }}bericht: {{ formatDateTime(t.reportCompletedAt) }}</p>
                   </div>
                   <span class="badge badge-shrink" :class="BOOKING_STATUS_BADGE[t.bookingStatus]">
                     {{ BOOKING_STATUS_LABEL[t.bookingStatus] }}
@@ -230,6 +259,15 @@ function openVideo(t: DriverTrip): void {
         :video-url="videoModal.url"
         :site-name="videoModal.siteName"
         @close="videoModal = null"
+      />
+    </Transition>
+
+    <Transition name="fade">
+      <TripReportModal
+        v-if="reportTarget"
+        :trip="reportTarget"
+        @close="reportTarget = null"
+        @saved="reportTarget = null; load()"
       />
     </Transition>
   </div>

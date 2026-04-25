@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { sitesApi, containersApi, invoiceApi } from '../../api'
-import type { Site, CustomerContainerView, Invoice } from '../../api'
+import { sitesApi, containersApi, invoiceApi, ordersApi } from '../../api'
+import type { Site, CustomerContainerView, Invoice, Order } from '../../api'
 import { fillColor, formatDateTime, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
 import ContainerCard from './ContainerCard.vue'
 import ContainerDetailModal from './ContainerDetailModal.vue'
@@ -9,13 +9,15 @@ import SchedulePickupModal from './SchedulePickupModal.vue'
 import UpdateFillModal from './UpdateFillModal.vue'
 import OrderContainerModal from './OrderContainerModal.vue'
 import CreateSiteModal from './CreateSiteModal.vue'
+import TripReportCard from '../shared/TripReportCard.vue'
 
 const sites = ref<Site[]>([])
 const containers = ref<CustomerContainerView[]>([])
+const customerOrders = ref<Order[]>([])
 const loading = ref(true)
 const error = ref('')
 
-const activeTab = ref<'containers' | 'pickups' | 'sites' | 'invoices'>('containers')
+const activeTab = ref<'containers' | 'pickups' | 'sites' | 'invoices' | 'reports'>('containers')
 const detailTarget = ref<{ container: CustomerContainerView; site: Site } | null>(null)
 const scheduleTarget = ref<{ container: CustomerContainerView; site: Site } | null>(null)
 const fillTarget = ref<CustomerContainerView | null>(null)
@@ -26,15 +28,17 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [sitesData, containersData] = await Promise.all([
+    const [sitesData, containersData, ordersData] = await Promise.all([
       sitesApi.list(),
       containersApi.list(),
+      ordersApi.listForCustomer('cust-demo'),
     ])
     sites.value = sitesData.filter(s => s.active)
     containers.value = containersData
+    customerOrders.value = ordersData
 
     const active = containersData.filter(c => c.status !== 'Retrieved' && c.status !== 'Closed' && c.status !== 'Cancelled')
-    if (active.length > 1) activeTab.value = 'sites'
+    if (active.length > 1 && activeTab.value === 'containers') activeTab.value = 'sites'
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Fehler beim Laden'
   } finally {
@@ -46,6 +50,14 @@ onMounted(() => { load(); loadInvoices() })
 
 function siteForContainer(c: CustomerContainerView): Site | undefined {
   return sites.value.find(s => s.siteId === c.siteId)
+}
+
+function siteName(siteId: string): string {
+  return sites.value.find(site => site.siteId === siteId)?.name ?? siteId
+}
+
+function containerForBooking(bookingId: string): CustomerContainerView | undefined {
+  return containers.value.find(container => container.bookingId === bookingId)
 }
 
 function containersForSite(siteId: string): CustomerContainerView[] {
@@ -67,6 +79,12 @@ const upcomingPickups = computed(() =>
 const fillPct = (c: CustomerContainerView) => Math.round(c.fillLevel * 100)
 
 const invoices = ref<Invoice[]>([])
+
+const customerReports = computed(() =>
+  customerOrders.value
+    .flatMap(order => order.reports.map(report => ({ order, report, container: containerForBooking(report.bookingId) })))
+    .sort((left, right) => new Date(right.report.createdAt).getTime() - new Date(left.report.createdAt).getTime())
+)
 
 async function loadInvoices() {
   invoices.value = await invoiceApi.listForCustomer('cust-demo')
@@ -94,6 +112,7 @@ async function loadInvoices() {
               <button :class="['tab', { active: activeTab === 'containers' }]" @click="activeTab = 'containers'">Container</button>
               <button :class="['tab', { active: activeTab === 'pickups' }]" @click="activeTab = 'pickups'">Abholungen</button>
               <button :class="['tab', { active: activeTab === 'sites' }]" @click="activeTab = 'sites'">Standorte</button>
+              <button :class="['tab', { active: activeTab === 'reports' }]" @click="activeTab = 'reports'">Berichte</button>
               <button :class="['tab', { active: activeTab === 'invoices' }]" @click="activeTab = 'invoices'; loadInvoices()">Rechnungen</button>
             </div>
           </div>
@@ -199,6 +218,26 @@ async function loadInvoices() {
               </div>
             </div>
           </div>
+
+          <!-- Reports tab -->
+          <div v-if="activeTab === 'reports'">
+            <div v-if="customerReports.length === 0" class="empty-state">
+              <div class="icon">&#128221;</div>
+              <p>Noch keine Fahrerberichte vorhanden.</p>
+            </div>
+            <div v-else class="stack">
+              <TripReportCard
+                v-for="entry in customerReports"
+                :key="entry.report.reportId"
+                :report="entry.report"
+                :waste-type="entry.container?.wasteType ?? 'Mixed'"
+                :container-number="entry.container?.containerNumber ?? null"
+                :site-name="siteName(entry.order.siteId)"
+                :booking-status="entry.container?.status ?? entry.order.status"
+              />
+            </div>
+          </div>
+
           <!-- Invoices tab -->
           <div v-if="activeTab === 'invoices'">
             <div v-if="invoices.length === 0" class="empty-state">
@@ -217,6 +256,7 @@ async function loadInvoices() {
                   </span>
                 </div>
                 <div class="invoice-amount">{{ inv.amount.toFixed(2) }} {{ inv.currency }}</div>
+                <p v-if="inv.damageCharge" class="text-sm text-muted">Schadensbelastung: {{ inv.damageCharge.toFixed(2) }} EUR</p>
                 <p class="text-sm text-muted">Ausgestellt: {{ formatDate(inv.issuedAt) }}</p>
               </div>
             </div>

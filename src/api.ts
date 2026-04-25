@@ -18,6 +18,8 @@ export type WasteType = 'Mixed' | 'Wood' | 'Metal' | 'Concrete' | 'Paper' | 'Pla
 export type BookingStatus = 'Requested' | 'Scheduled' | 'Delivered' | 'Filling' | 'EmptyRequested' | 'Retrieved' | 'Closed' | 'Cancelled'
 export type ContainerStatus = 'InYard' | 'InTransit' | 'OnSite' | 'ReadyForPickup' | 'AtWeighStation' | 'Decommissioned'
 export type ContainerSize = 'Small' | 'Medium' | 'Large' | 'Roll'
+export type DriverTripKind = 'delivery' | 'pickup'
+export type DriverReportPhotoSide = 'front' | 'right' | 'back' | 'left'
 
 export interface Site {
   siteId: string
@@ -83,13 +85,14 @@ export interface DriverTrip {
   siteId: string
   containerNumber: string | null
   wasteType: WasteType
-  tripKind: string | null
+  tripKind: DriverTripKind | null
   bookingStatus: BookingStatus
   siteName: string | null
   siteAddress: string | null
   siteLat: number
   siteLon: number
   createdAt: string
+  reportCompletedAt: string | null
 }
 
 export interface Anfahrt {
@@ -105,6 +108,25 @@ export interface Anfahrt {
   videoSizeBytes: number
 }
 
+export interface DriverReportPhoto {
+  side: DriverReportPhotoSide
+  imageUrl: string
+  capturedAt: string
+}
+
+export interface DriverReport {
+  reportId: string
+  bookingId: string
+  tripKind: DriverTripKind
+  createdAt: string
+  createdByDriverId: string
+  signerName: string
+  signatureDataUrl: string
+  damageNotes: string | null
+  damageCharge: number
+  photos: DriverReportPhoto[]
+}
+
 export interface Order {
   orderId: string
   customerId: string
@@ -115,6 +137,7 @@ export interface Order {
   bookingIds: string[] | null
   status: BookingStatus
   assignedDriverId: string | null
+  reports: DriverReport[]
 }
 
 export interface Invoice {
@@ -130,6 +153,7 @@ export interface Invoice {
   status: 'unpaid' | 'paid'
   weightKg: number | null
   pricePerKg: number | null
+  damageCharge: number | null
 }
 
 export interface ErrorLog {
@@ -182,11 +206,25 @@ const BILLING_RATES: Record<WasteType, number> = {
   Electronics: 480,
 }
 
+const REQUIRED_REPORT_SIDES: DriverReportPhotoSide[] = ['front', 'right', 'back', 'left']
+
+function roundCurrency(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
 function cloneOrder(order: Order): Order {
   return {
     ...order,
     bookingIds: order.bookingIds ? [...order.bookingIds] : null,
+    reports: order.reports.map(report => ({
+      ...report,
+      photos: report.photos.map(photo => ({ ...photo })),
+    })),
   }
+}
+
+function cloneTrip(trip: DriverTrip): DriverTrip {
+  return { ...trip }
 }
 
 function findSite(siteId: string): Site | undefined {
@@ -205,7 +243,15 @@ function listTripsForBooking(bookingId: string): DriverTrip[] {
   return driverTrips.filter(trip => trip.bookingId === bookingId)
 }
 
-function latestTripForBooking(bookingId: string, tripKind?: string): DriverTrip | undefined {
+function reportForTrip(bookingId: string, tripKind: DriverTripKind): DriverReport | undefined {
+  return findOrderByBookingId(bookingId)?.reports.find(report => report.bookingId === bookingId && report.tripKind === tripKind)
+}
+
+function reportCompletedAt(bookingId: string, tripKind: DriverTripKind): string | null {
+  return reportForTrip(bookingId, tripKind)?.createdAt ?? null
+}
+
+function latestTripForBooking(bookingId: string, tripKind?: DriverTripKind): DriverTrip | undefined {
   const trips = listTripsForBooking(bookingId)
     .filter(trip => !tripKind || trip.tripKind === tripKind)
     .sort((left, right) => {
@@ -231,6 +277,61 @@ function deliveryScheduledAtForBooking(bookingId: string): string | null {
 
 function pickupTripForBooking(bookingId: string): DriverTrip | undefined {
   return latestTripForBooking(bookingId, 'pickup')
+}
+
+function nextContainerNumber(): string {
+  return `C-${Math.floor(1000 + Math.random() * 9000)}`
+}
+
+function transportAmount(invoice: Invoice): number {
+  if (invoice.weightKg !== null && invoice.pricePerKg !== null) {
+    return roundCurrency(invoice.weightKg * invoice.pricePerKg)
+  }
+  return BILLING_RATES[invoice.wasteType]
+}
+
+function recalculateInvoiceAmount(invoice: Invoice): void {
+  invoice.amount = roundCurrency(transportAmount(invoice) + (invoice.damageCharge ?? 0))
+}
+
+function syncInvoiceForRetrievedBooking(bookingId: string): Invoice {
+  const container = findContainer(bookingId)
+  if (!container) {
+    throw new Error('Booking not found')
+  }
+
+  const site = findSite(container.siteId)
+  const order = findOrderByBookingId(bookingId)
+  const pickupReport = reportForTrip(bookingId, 'pickup')
+  const damageCharge = pickupReport && pickupReport.damageCharge > 0 ? roundCurrency(pickupReport.damageCharge) : null
+  let invoice = invoices.find(item => item.bookingId === bookingId)
+
+  if (!invoice) {
+    invoice = {
+      invoiceId: `inv-${uid()}`,
+      customerId: order?.customerId ?? 'cust-demo',
+      bookingId,
+      siteId: container.siteId,
+      wasteType: container.wasteType,
+      siteName: site?.name ?? null,
+      issuedAt: new Date().toISOString(),
+      amount: BILLING_RATES[container.wasteType],
+      currency: 'EUR',
+      status: 'unpaid',
+      weightKg: null,
+      pricePerKg: null,
+      damageCharge,
+    }
+    invoices.push(invoice)
+  } else {
+    invoice.siteId = container.siteId
+    invoice.wasteType = container.wasteType
+    invoice.siteName = site?.name ?? null
+    invoice.damageCharge = damageCharge
+  }
+
+  recalculateInvoiceAmount(invoice)
+  return invoice
 }
 
 function deriveOrderStatus(order: Order): BookingStatus {
@@ -276,6 +377,10 @@ function syncTripsForBooking(bookingId: string): void {
 
     if (order?.assignedDriverId) {
       trip.driverUserId = order.assignedDriverId
+    }
+
+    if (trip.tripKind) {
+      trip.reportCompletedAt = reportCompletedAt(bookingId, trip.tripKind)
     }
 
     if (trip.tripKind === 'pickup' && container.expectedEmptyingAt) {
@@ -332,6 +437,7 @@ function ensureDeliveryTrip(bookingId: string, scheduledAt?: string | null): voi
     siteLat: site?.lat ?? 0,
     siteLon: site?.lon ?? 0,
     createdAt: new Date().toISOString(),
+    reportCompletedAt: reportCompletedAt(bookingId, 'delivery'),
   })
 }
 
@@ -366,6 +472,7 @@ function ensurePickupTrip(bookingId: string): void {
     siteLat: site?.lat ?? 0,
     siteLon: site?.lon ?? 0,
     createdAt: new Date().toISOString(),
+    reportCompletedAt: reportCompletedAt(bookingId, 'pickup'),
   })
 }
 
@@ -406,6 +513,7 @@ function createOrderInStore(
     bookingIds,
     status: 'Requested',
     assignedDriverId: null,
+    reports: [],
   }
 
   orders.push(order)
@@ -420,6 +528,7 @@ function createOrderInStore(
 
 function normalizeMockState(): void {
   invoices.forEach(invoice => {
+    recalculateInvoiceAmount(invoice)
     const container = findContainer(invoice.bookingId)
     if (!container) return
     if (invoice.status === 'paid' && (container.status === 'Retrieved' || container.status === 'Closed')) {
@@ -572,6 +681,7 @@ function containerToBooking(c: CustomerContainerView): ContainerBooking {
 
 export const containersApi = {
   list(): Promise<CustomerContainerView[]> {
+    normalizeMockState()
     return delay([...containers])
   },
 
@@ -620,7 +730,87 @@ export const containersApi = {
 
 export const driverApi = {
   trips(_days = 2): Promise<DriverTrip[]> {
-    return delay([...driverTrips])
+    normalizeMockState()
+    return delay([...driverTrips].sort((left, right) => new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime()).map(cloneTrip))
+  },
+
+  submitTripReport(
+    bookingId: string,
+    tripKind: DriverTripKind,
+    body: {
+      driverId: string
+      signerName: string
+      signatureDataUrl: string
+      damageNotes?: string
+      damageCharge?: number
+      photos: Array<{ side: DriverReportPhotoSide; imageUrl: string }>
+    }
+  ): Promise<Order> {
+    const order = findOrderByBookingId(bookingId)
+    const container = findContainer(bookingId)
+
+    if (!order || !container) return Promise.reject(new Error('Booking not found'))
+    if (reportForTrip(bookingId, tripKind)) return Promise.reject(new Error('A report for this trip already exists'))
+
+    const signerName = body.signerName.trim()
+    if (!signerName) return Promise.reject(new Error('Signer name is required'))
+    if (!body.signatureDataUrl.trim()) return Promise.reject(new Error('Customer signature is required'))
+
+    const uniqueSides = new Set(body.photos.map(photo => photo.side))
+    const hasAllRequiredPhotos = REQUIRED_REPORT_SIDES.every(side => uniqueSides.has(side))
+    if (body.photos.length !== REQUIRED_REPORT_SIDES.length || !hasAllRequiredPhotos) {
+      return Promise.reject(new Error('Exactly four side photos are required'))
+    }
+
+    const normalizedDamageCharge = tripKind === 'pickup'
+      ? roundCurrency(Math.max(0, body.damageCharge ?? 0))
+      : 0
+    const damageNotes = body.damageNotes?.trim() ?? ''
+    if (tripKind === 'pickup' && normalizedDamageCharge > 0 && !damageNotes) {
+      return Promise.reject(new Error('Damage notes are required when charging for damages'))
+    }
+
+    const createdAt = new Date().toISOString()
+    const photos = REQUIRED_REPORT_SIDES.map(side => {
+      const photo = body.photos.find(item => item.side === side)
+      return {
+        side,
+        imageUrl: photo?.imageUrl ?? '',
+        capturedAt: createdAt,
+      }
+    })
+
+    order.reports.push({
+      reportId: `rpt-${uid()}`,
+      bookingId,
+      tripKind,
+      createdAt,
+      createdByDriverId: body.driverId,
+      signerName,
+      signatureDataUrl: body.signatureDataUrl,
+      damageNotes: damageNotes || null,
+      damageCharge: normalizedDamageCharge,
+      photos,
+    })
+
+    if (tripKind === 'delivery') {
+      if (container.status === 'Requested' || container.status === 'Scheduled') {
+        container.status = 'Delivered'
+        container.fillLevel = 0
+      }
+      if (!container.containerNumber) {
+        container.containerNumber = nextContainerNumber()
+      }
+
+      const site = findSite(container.siteId)
+      container.lat = site?.lat ?? container.lat
+      container.lon = site?.lon ?? container.lon
+      syncLinkedState(bookingId)
+      return delay(cloneOrder(order))
+    }
+
+    markContainerRetrieved(bookingId)
+    return delay(cloneOrder(order))
   },
 }
 
@@ -628,6 +818,7 @@ export const driverApi = {
 
 export const adminApi = {
   listOrders(): Promise<Order[]> {
+    normalizeMockState()
     return delay([...orders].reverse().map(cloneOrder))
   },
 
@@ -655,6 +846,7 @@ export const adminApi = {
   },
 
   listContainers(): Promise<CustomerContainerView[]> {
+    normalizeMockState()
     return delay([...containers])
   },
 
@@ -677,14 +869,23 @@ export const adminApi = {
   },
 }
 
+export const ordersApi = {
+  listForCustomer(customerId: string): Promise<Order[]> {
+    normalizeMockState()
+    return delay(orders.filter(order => order.customerId === customerId).reverse().map(cloneOrder))
+  },
+}
+
 // ---- Invoice API ----
 
 export const invoiceApi = {
   listForCustomer(customerId: string): Promise<Invoice[]> {
+    normalizeMockState()
     return delay(invoices.filter(i => i.customerId === customerId).reverse())
   },
 
   listAll(): Promise<Invoice[]> {
+    normalizeMockState()
     return delay([...invoices].reverse())
   },
 
@@ -693,7 +894,7 @@ export const invoiceApi = {
     if (!inv) return Promise.reject(new Error('Invoice not found'))
     inv.weightKg = weightKg
     inv.pricePerKg = pricePerKg
-    inv.amount = Math.round(weightKg * pricePerKg * 100) / 100
+    recalculateInvoiceAmount(inv)
     return delay({ ...inv })
   },
 
@@ -719,26 +920,7 @@ export function markContainerRetrieved(bookingId: string): void {
   c.lat = null
   c.lon = null
 
-  const site = findSite(c.siteId)
-  const order = findOrderByBookingId(bookingId)
-  const existingInvoice = invoices.find(invoice => invoice.bookingId === bookingId)
-
-  if (!existingInvoice) {
-    invoices.push({
-      invoiceId: `inv-${uid()}`,
-      customerId: order?.customerId ?? 'cust-demo',
-      bookingId,
-      siteId: c.siteId,
-      wasteType: c.wasteType,
-      siteName: site?.name ?? null,
-      issuedAt: new Date().toISOString(),
-      amount: BILLING_RATES[c.wasteType],
-      currency: 'EUR',
-      status: 'unpaid',
-      weightKg: null,
-      pricePerKg: null,
-    })
-  }
+  syncInvoiceForRetrievedBooking(bookingId)
 
   syncLinkedState(bookingId)
 }
