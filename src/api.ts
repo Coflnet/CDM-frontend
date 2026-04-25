@@ -1,8 +1,4 @@
-const BASE = import.meta.env.VITE_API_BASE_URL as string
-
-function getToken(): string {
-  return localStorage.getItem('cdm_token') ?? ''
-}
+// ---- Token helpers (kept for Firebase auth store compatibility) ----
 
 export function setToken(token: string): void {
   localStorage.setItem('cdm_token', token)
@@ -13,38 +9,7 @@ export function clearToken(): void {
 }
 
 export function hasToken(): boolean {
-  return !!getToken()
-}
-
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${getToken()}`,
-    'Content-Type': 'application/json',
-  }
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(err.message ?? `HTTP ${res.status}`)
-  }
-  if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T
-  return res.json()
-}
-
-async function requestMultipart<T>(method: string, path: string, form: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${getToken()}` },
-    body: form,
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ message: res.statusText }))
-    throw new Error(err.message ?? `HTTP ${res.status}`)
-  }
-  return res.json()
+  return !!localStorage.getItem('cdm_token')
 }
 
 // ---- API models ----
@@ -151,38 +116,242 @@ export interface Order {
   status: BookingStatus
 }
 
-// ---- Sites ----
+// ---- In-memory mock store ----
 
-export const sitesApi = {
-  list: () => request<Site[]>('GET', '/api/my/sites'),
-  get: (siteId: string) => request<Site>('GET', `/api/my/sites/${siteId}`),
-  create: (body: { name: string; address: string; lat: number; lon: number; orientationNote?: string }) =>
-    request<Site>('POST', '/api/my/sites', body),
-  listContainers: (siteId: string) => request<BookingBySite[]>('GET', `/api/my/sites/${siteId}/containers`),
-  createOrder: (siteId: string, body: { wasteTypes: WasteType[]; requestedDeliveryAt?: string; notes?: string }) =>
-    request<Order>('POST', `/api/my/sites/${siteId}/orders`, body),
-  listAnfahrten: (siteId: string) => request<Anfahrt[]>('GET', `/api/my/sites/${siteId}/anfahrten`),
-  uploadAnfahrt: (siteId: string, form: FormData) =>
-    requestMultipart<Anfahrt>('POST', `/api/my/sites/${siteId}/anfahrten`, form),
-  videoUrl: (siteId: string, anfahrtId: string) => `${BASE}/api/my/sites/${siteId}/anfahrten/${anfahrtId}/video`,
+import { SITES, CONTAINERS, DRIVER_TRIPS, ANFAHRTEN } from './mockData'
+
+function uid(): string {
+  return Math.random().toString(36).slice(2, 10)
 }
 
-// ---- Customer containers ----
+function delay<T>(val: T, ms = 350): Promise<T> {
+  return new Promise(resolve => setTimeout(() => resolve(val), ms))
+}
 
-export const containersApi = {
-  list: () => request<CustomerContainerView[]>('GET', '/api/my/containers'),
-  requestContainer: (body: { siteId: string; wasteType: WasteType; requestedDeliveryAt?: string; notes?: string }) =>
-    request<ContainerBooking>('POST', '/api/my/containers', body),
-  updateFill: (bookingId: string, fillLevel: number, note?: string) =>
-    request<ContainerBooking>('POST', `/api/my/containers/${bookingId}/fill`, { fillLevel, note }),
-  requestEmptying: (bookingId: string, preferredAt?: string) => {
-    const qs = preferredAt ? `?preferredAt=${encodeURIComponent(preferredAt)}` : ''
-    return request<ContainerBooking>('POST', `/api/my/containers/${bookingId}/empty${qs}`)
+const sites: Site[] = [...SITES]
+const containers: CustomerContainerView[] = [...CONTAINERS]
+const driverTrips: DriverTrip[] = [...DRIVER_TRIPS]
+const anfahrtenMap: Record<string, Anfahrt[]> = Object.fromEntries(
+  Object.entries(ANFAHRTEN).map(([k, v]) => [k, [...v]])
+)
+
+// ---- Sites API ----
+
+export const sitesApi = {
+  list(): Promise<Site[]> {
+    return delay([...sites])
+  },
+
+  get(siteId: string): Promise<Site> {
+    const s = sites.find(x => x.siteId === siteId)
+    if (!s) return Promise.reject(new Error('Site not found'))
+    return delay({ ...s })
+  },
+
+  create(body: { name: string; address: string; lat: number; lon: number; orientationNote?: string }): Promise<Site> {
+    const site: Site = {
+      siteId: `site-${uid()}`,
+      customerId: 'cust-demo',
+      name: body.name,
+      address: body.address,
+      lat: body.lat,
+      lon: body.lon,
+      orientationNote: body.orientationNote ?? null,
+      createdAt: new Date().toISOString(),
+      active: true,
+    }
+    sites.push(site)
+    anfahrtenMap[site.siteId] = []
+    return delay({ ...site })
+  },
+
+  listContainers(siteId: string): Promise<BookingBySite[]> {
+    const result: BookingBySite[] = containers
+      .filter(c => c.siteId === siteId)
+      .map(c => ({
+        siteId: c.siteId,
+        bookingId: c.bookingId,
+        customerId: 'cust-demo',
+        wasteType: c.wasteType,
+        status: c.status,
+        assignedContainerNumber: c.containerNumber,
+        requestedAt: new Date().toISOString(),
+        scheduledDeliveryAt: null,
+        expectedEmptyingAt: c.expectedEmptyingAt,
+        currentFillLevel: c.fillLevel,
+      }))
+    return delay(result)
+  },
+
+  createOrder(
+    siteId: string,
+    body: { wasteTypes: WasteType[]; requestedDeliveryAt?: string; notes?: string }
+  ): Promise<Order> {
+    const orderId = `ord-${uid()}`
+    const site = sites.find(s => s.siteId === siteId)
+
+    const bookingIds: string[] = body.wasteTypes.map(wt => {
+      const bkId = `bk-${uid()}`
+      containers.push({
+        bookingId: bkId,
+        siteId,
+        containerNumber: null,
+        wasteType: wt,
+        status: 'Requested',
+        fillLevel: 0,
+        lat: site?.lat ?? null,
+        lon: site?.lon ?? null,
+        expectedEmptyingAt: null,
+      })
+      driverTrips.push({
+        dayBucket: new Date().toISOString().slice(0, 10),
+        driverUserId: 'driver-demo',
+        scheduledAt: body.requestedDeliveryAt ?? new Date(Date.now() + 2 * 86400000).toISOString(),
+        bookingId: bkId,
+        customerId: 'cust-demo',
+        siteId,
+        containerNumber: null,
+        wasteType: wt,
+        tripKind: 'delivery',
+        bookingStatus: 'Requested',
+        siteName: site?.name ?? null,
+        siteAddress: site?.address ?? null,
+        siteLat: site?.lat ?? 0,
+        siteLon: site?.lon ?? 0,
+        createdAt: new Date().toISOString(),
+      })
+      return bkId
+    })
+
+    return delay({
+      orderId,
+      customerId: 'cust-demo',
+      siteId,
+      createdAt: new Date().toISOString(),
+      requestedDeliveryAt: body.requestedDeliveryAt ?? null,
+      notes: body.notes ?? null,
+      bookingIds,
+      status: 'Requested' as BookingStatus,
+    })
+  },
+
+  listAnfahrten(siteId: string): Promise<Anfahrt[]> {
+    return delay([...(anfahrtenMap[siteId] ?? [])])
+  },
+
+  uploadAnfahrt(siteId: string, _form: FormData): Promise<Anfahrt> {
+    const site = sites.find(s => s.siteId === siteId)
+    const anfahrt: Anfahrt = {
+      siteId,
+      anfahrtId: `anf-${uid()}`,
+      uploadedByUserId: 'cust-demo',
+      uploadedAt: new Date().toISOString(),
+      lat: site?.lat ?? 0,
+      lon: site?.lon ?? 0,
+      orientationNote: null,
+      videoStorageKey: null,
+      videoContentType: null,
+      videoSizeBytes: 0,
+    }
+    if (!anfahrtenMap[siteId]) anfahrtenMap[siteId] = []
+    anfahrtenMap[siteId].unshift(anfahrt)
+    return delay(anfahrt)
+  },
+
+  videoUrl(_siteId: string, _anfahrtId: string): string {
+    return ''
   },
 }
 
-// ---- Driver ----
+// ---- Customer containers API ----
+
+function containerToBooking(c: CustomerContainerView): ContainerBooking {
+  return {
+    bookingId: c.bookingId,
+    customerId: 'cust-demo',
+    siteId: c.siteId,
+    orderId: '',
+    wasteType: c.wasteType,
+    assignedContainerNumber: c.containerNumber,
+    status: c.status,
+    requestedAt: new Date().toISOString(),
+    scheduledDeliveryAt: null,
+    deliveredAt: null,
+    emptyRequestedAt: c.status === 'EmptyRequested' ? new Date().toISOString() : null,
+    expectedEmptyingAt: c.expectedEmptyingAt,
+    retrievedAt: null,
+    currentFillLevel: c.fillLevel,
+    notes: null,
+  }
+}
+
+export const containersApi = {
+  list(): Promise<CustomerContainerView[]> {
+    return delay([...containers])
+  },
+
+  requestContainer(body: {
+    siteId: string
+    wasteType: WasteType
+    requestedDeliveryAt?: string
+    notes?: string
+  }): Promise<ContainerBooking> {
+    const bkId = `bk-${uid()}`
+    const site = sites.find(s => s.siteId === body.siteId)
+    const container: CustomerContainerView = {
+      bookingId: bkId,
+      siteId: body.siteId,
+      containerNumber: null,
+      wasteType: body.wasteType,
+      status: 'Requested',
+      fillLevel: 0,
+      lat: site?.lat ?? null,
+      lon: site?.lon ?? null,
+      expectedEmptyingAt: null,
+    }
+    containers.push(container)
+    return delay(containerToBooking(container))
+  },
+
+  updateFill(bookingId: string, fillLevel: number, _note?: string): Promise<ContainerBooking> {
+    const c = containers.find(x => x.bookingId === bookingId)
+    if (!c) return Promise.reject(new Error('Booking not found'))
+    c.fillLevel = fillLevel
+    if (c.status === 'Delivered') c.status = 'Filling'
+    return delay(containerToBooking(c))
+  },
+
+  requestEmptying(bookingId: string, preferredAt?: string): Promise<ContainerBooking> {
+    const c = containers.find(x => x.bookingId === bookingId)
+    if (!c) return Promise.reject(new Error('Booking not found'))
+    c.status = 'EmptyRequested'
+    c.expectedEmptyingAt = preferredAt ?? new Date(Date.now() + 2 * 86400000).toISOString()
+    const site = sites.find(s => s.siteId === c.siteId)
+    driverTrips.push({
+      dayBucket: c.expectedEmptyingAt.slice(0, 10),
+      driverUserId: 'driver-demo',
+      scheduledAt: c.expectedEmptyingAt,
+      bookingId: c.bookingId,
+      customerId: 'cust-demo',
+      siteId: c.siteId,
+      containerNumber: c.containerNumber,
+      wasteType: c.wasteType,
+      tripKind: 'pickup',
+      bookingStatus: 'EmptyRequested',
+      siteName: site?.name ?? null,
+      siteAddress: site?.address ?? null,
+      siteLat: site?.lat ?? 0,
+      siteLon: site?.lon ?? 0,
+      createdAt: new Date().toISOString(),
+    })
+    return delay(containerToBooking(c))
+  },
+}
+
+// ---- Driver API ----
 
 export const driverApi = {
-  trips: (days = 2) => request<DriverTrip[]>('GET', `/api/driver/trips?days=${days}`),
+  trips(_days = 2): Promise<DriverTrip[]> {
+    return delay([...driverTrips])
+  },
 }
