@@ -46,7 +46,7 @@ export default {
     loginTab: 'Anmelden',
     signupTab: 'Registrieren',
     email: 'E-Mail',
-    emailPh: 'name@firma.de',
+    emailPh: "name{'@'}firma.de",
     password: 'Passwort',
     passwordPh: '••••••••',
     passwordSignupPh: 'Mindestens 6 Zeichen',

@@ -46,7 +46,7 @@ export default {
     loginTab: 'Sign in',
     signupTab: 'Sign up',
     email: 'Email',
-    emailPh: 'name@company.com',
+    emailPh: "name{'@'}company.com",
     password: 'Password',
     passwordPh: '••••••••',
     passwordSignupPh: 'At least 6 characters',
