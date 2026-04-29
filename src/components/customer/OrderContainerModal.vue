@@ -10,10 +10,14 @@ useBodyLock()
 const props = defineProps<{ sites: Site[] }>()
 const emit = defineEmits<{ (e: 'close'): void; (e: 'ordered'): void }>()
 
-const siteId = ref(props.sites[0]?.siteId ?? '')
+const NEW_SITE_ID = '__new'
+const siteId = ref(props.sites[0]?.siteId ?? NEW_SITE_ID)
 const wasteType = ref<WasteType>('Mixed')
 const notes = ref('')
 const preferredDate = ref('')
+const newSiteName = ref('')
+const newSiteAddress = ref('')
+const newSiteZip = ref('')
 const error = ref('')
 const loading = ref(false)
 
@@ -24,12 +28,24 @@ const { step, recording, videoBlob, videoPreviewUrl, stream } = recorder
 const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = recorder
 
 async function save() {
-  const site = props.sites.find(s => s.siteId === siteId.value)
-  if (!site) { error.value = 'Bitte wähle einen Standort aus.'; return }
   if (!videoBlob.value) { error.value = 'Bitte nimm vor der Bestellung ein Einfahrtsvideo auf.'; return }
   error.value = ''
   loading.value = true
   try {
+    let site = props.sites.find(s => s.siteId === siteId.value)
+    if (!site) {
+      if (!newSiteZip.value.trim()) { error.value = 'Bitte gib eine Postleitzahl ein.'; return }
+      site = await sitesApi.create({
+        name: newSiteName.value.trim() || `Bestellung ${newSiteZip.value.trim()}`,
+        address: newSiteAddress.value.trim() || newSiteZip.value.trim(),
+        zipCode: newSiteZip.value.trim(),
+        lat: 0,
+        lon: 0,
+        orientationNote: notes.value.trim() || undefined,
+      })
+      siteId.value = site.siteId
+    }
+
     // Upload anfahrt video first
     const form = new FormData()
     form.append('video', videoBlob.value, 'anfahrt.webm')
@@ -70,7 +86,22 @@ async function save() {
           <label>Standort</label>
           <select v-model="siteId">
             <option v-for="s in sites" :key="s.siteId" :value="s.siteId">{{ s.name }}</option>
+            <option :value="NEW_SITE_ID">Neuer Standort</option>
           </select>
+        </div>
+        <div v-if="siteId === NEW_SITE_ID" class="new-site-fields">
+          <div class="form-group">
+            <label>Postleitzahl</label>
+            <input v-model="newSiteZip" type="text" inputmode="numeric" placeholder="84513" />
+          </div>
+          <div class="form-group">
+            <label>Adresse</label>
+            <input v-model="newSiteAddress" type="text" placeholder="Straße und Ort" />
+          </div>
+          <div class="form-group">
+            <label>Standortname</label>
+            <input v-model="newSiteName" type="text" placeholder="Baustelle oder Lieferort" />
+          </div>
         </div>
         <div class="form-group">
           <label>Abfalltyp</label>

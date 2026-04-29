@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" role="img" aria-label="Container yard with trucks and stacked containers">
+  <rect width="1600" height="1000" fill="#151515"/>
+  <rect y="650" width="1600" height="350" fill="#1f211f"/>
+  <g opacity="0.18" stroke="#ffffff" stroke-width="2">
+    <path d="M0 760h1600"/>
+    <path d="M0 870h1600"/>
+    <path d="M160 650v350"/>
+    <path d="M410 650v350"/>
+    <path d="M760 650v350"/>
+    <path d="M1120 650v350"/>
+    <path d="M1380 650v350"/>
+  </g>
+  <g transform="translate(940 210)">
+    <rect width="360" height="92" rx="6" fill="#256f9f"/>
+    <rect y="102" width="360" height="92" rx="6" fill="#2f8b5b"/>
+    <rect x="48" y="204" width="360" height="92" rx="6" fill="#b45f2a"/>
+    <g stroke="#ffffff" stroke-opacity="0.22" stroke-width="5">
+      <path d="M30 0v92M90 0v92M150 0v92M210 0v92M270 0v92M330 0v92"/>
+      <path d="M30 102v92M90 102v92M150 102v92M210 102v92M270 102v92M330 102v92"/>
+      <path d="M78 204v92M138 204v92M198 204v92M258 204v92M318 204v92M378 204v92"/>
+    </g>
+  </g>
+  <g transform="translate(180 430)">
+    <rect x="160" y="90" width="420" height="120" rx="10" fill="#e0b34d"/>
+    <rect x="0" y="130" width="190" height="80" rx="8" fill="#d8d8d8"/>
+    <rect x="42" y="146" width="58" height="34" rx="3" fill="#2b3a42"/>
+    <rect x="112" y="146" width="50" height="34" rx="3" fill="#2b3a42"/>
+    <circle cx="92" cy="226" r="34" fill="#101010"/>
+    <circle cx="92" cy="226" r="14" fill="#5c6268"/>
+    <circle cx="485" cy="226" r="34" fill="#101010"/>
+    <circle cx="485" cy="226" r="14" fill="#5c6268"/>
+    <g stroke="#ffffff" stroke-opacity="0.28" stroke-width="5">
+      <path d="M195 90v120M265 90v120M335 90v120M405 90v120M475 90v120M545 90v120"/>
+    </g>
+  </g>
+  <g transform="translate(820 620)">
+    <rect width="460" height="80" rx="8" fill="#4d7ea8"/>
+    <rect x="500" y="24" width="160" height="56" rx="8" fill="#d5d5d5"/>
+    <rect x="524" y="36" width="42" height="24" rx="3" fill="#2b3a42"/>
+    <circle cx="76" cy="96" r="24" fill="#101010"/>
+    <circle cx="408" cy="96" r="24" fill="#101010"/>
+    <circle cx="574" cy="96" r="24" fill="#101010"/>
+  </g>
+  <rect x="0" y="0" width="1600" height="1000" fill="url(#shade)"/>
+  <defs>
+    <linearGradient id="shade" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0.05"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.52"/>
+    </linearGradient>
+  </defs>
+</svg>

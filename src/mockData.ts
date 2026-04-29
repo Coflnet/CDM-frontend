@@ -4,8 +4,10 @@ export const SITES: Site[] = [
   {
     siteId: 'site-001',
     customerId: 'cust-demo',
+    companyId: '11111111-1111-1111-1111-111111111111',
     name: 'Baustelle Eichenweg 45',
     address: 'Eichenweg 45, 10117 Berlin',
+    zipCode: '10117',
     lat: 52.5200,
     lon: 13.4050,
     orientationNote: 'Tor auf der Nordseite, Einfahrt links neben dem Lagergebäude.',
@@ -15,8 +17,10 @@ export const SITES: Site[] = [
   {
     siteId: 'site-002',
     customerId: 'cust-demo',
+    companyId: '11111111-1111-1111-1111-111111111111',
     name: 'Lager Schönhauser Allee',
     address: 'Schönhauser Allee 12, 10119 Berlin',
+    zipCode: '10119',
     lat: 52.5370,
     lon: 13.4140,
     orientationNote: 'Direkt am Hintereingang, Tor-Code 4812.',
@@ -26,8 +30,10 @@ export const SITES: Site[] = [
   {
     siteId: 'site-003',
     customerId: 'cust-demo',
+    companyId: '11111111-1111-1111-1111-111111111111',
     name: 'Bürokomplex Hauptstraße',
     address: 'Hauptstraße 99, 10827 Berlin',
+    zipCode: '10827',
     lat: 52.4790,
     lon: 13.3460,
     orientationNote: null,

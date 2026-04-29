@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { adminApi, invoiceApi, markContainerRetrieved } from '../../api'
-import type { Order, Invoice, ErrorLog, Driver, Site, CustomerContainerView, DriverReport } from '../../api'
+import type { Order, Invoice, ErrorLog, Driver, Site, CustomerContainerView, DriverReport, ContainerCompany } from '../../api'
 import { WASTE_TYPE_LABEL, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, formatDate, formatDateTime } from '../../utils'
 import WeightUploadModal from './WeightUploadModal.vue'
 import TripReportCard from '../shared/TripReportCard.vue'
 
-const activeTab = ref<'orders' | 'containers' | 'invoices' | 'logs'>('orders')
+const activeTab = ref<'orders' | 'containers' | 'invoices' | 'logs' | 'companies'>('orders')
 
 const orders = ref<Order[]>([])
 const allContainers = ref<CustomerContainerView[]>([])
@@ -14,24 +14,32 @@ const allSites = ref<Site[]>([])
 const allInvoices = ref<Invoice[]>([])
 const errorLogs = ref<ErrorLog[]>([])
 const drivers = ref<Driver[]>([])
+const companies = ref<ContainerCompany[]>([])
 const loading = ref(true)
 const error = ref('')
 
 const assigningOrderId = ref<string | null>(null)
 const assignDriverId = ref('')
 const showWeightUpload = ref(false)
+const newCompanyName = ref('')
+const newCompanyZip = ref('')
+const assignCompanyId = ref('')
+const assignEmail = ref('')
+const assignRole = ref<'admin' | 'driver'>('driver')
+const companyMessage = ref('')
 
 async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [o, c, s, inv, logs, d] = await Promise.all([
+    const [o, c, s, inv, logs, d, companyRows] = await Promise.all([
       adminApi.listOrders(),
       adminApi.listContainers(),
       adminApi.listSites(),
       invoiceApi.listAll(),
       adminApi.listErrorLogs(),
       adminApi.listDrivers(),
+      adminApi.listCompanies(),
     ])
     orders.value = o
     allContainers.value = c
@@ -39,6 +47,8 @@ async function load() {
     allInvoices.value = inv
     errorLogs.value = logs
     drivers.value = d
+    companies.value = companyRows
+    if (!assignCompanyId.value && companyRows[0]) assignCompanyId.value = companyRows[0].companyId
   } catch (e: unknown) {
     error.value = e instanceof Error ? e.message : 'Ladefehler'
   } finally {
@@ -91,8 +101,35 @@ async function doMarkPaid(invoiceId: string) {
 }
 
 async function doMarkRetrieved(order: Order) {
-  order.bookingIds?.forEach(bookingId => markContainerRetrieved(bookingId))
+  await Promise.all((order.bookingIds ?? []).map(bookingId => markContainerRetrieved(bookingId)))
   await load()
+}
+
+async function createCompany() {
+  if (!newCompanyName.value.trim()) return
+  companyMessage.value = ''
+  try {
+    await adminApi.createCompany({ name: newCompanyName.value.trim(), baseZipCode: newCompanyZip.value.trim() || undefined })
+    newCompanyName.value = ''
+    newCompanyZip.value = ''
+    companyMessage.value = 'Firma erstellt.'
+    await load()
+  } catch (e: unknown) {
+    companyMessage.value = e instanceof Error ? e.message : 'Firma konnte nicht erstellt werden.'
+  }
+}
+
+async function assignCompanyUser() {
+  if (!assignCompanyId.value || !assignEmail.value.trim()) return
+  companyMessage.value = ''
+  try {
+    await adminApi.assignCompanyUser(assignCompanyId.value, assignEmail.value.trim(), assignRole.value)
+    assignEmail.value = ''
+    companyMessage.value = 'Benutzer zugewiesen.'
+    await load()
+  } catch (e: unknown) {
+    companyMessage.value = e instanceof Error ? e.message : 'Benutzer konnte nicht zugewiesen werden.'
+  }
 }
 
 const pendingOrders = computed(() => orders.value.filter(o => o.status === 'Requested' || o.status === 'Scheduled'))
@@ -290,6 +327,58 @@ function logLevelClass(level: ErrorLog['level']) {
               <p v-if="log.context" class="text-sm text-muted mt-1">Kontext: {{ log.context }}</p>
             </div>
           </div>
+
+          <div v-if="activeTab === 'companies'" class="stack">
+            <div v-if="companyMessage" class="alert alert-info">{{ companyMessage }}</div>
+
+            <div class="card">
+              <p class="section-title">Firmen</p>
+              <div v-if="companies.length === 0" class="text-sm text-muted">Keine Firma zugewiesen.</div>
+              <div v-else class="company-list">
+                <div v-for="company in companies" :key="company.companyId" class="company-row">
+                  <div>
+                    <strong>{{ company.name }}</strong>
+                    <p class="text-sm text-muted">{{ company.baseZipCode || 'ohne PLZ' }} · {{ company.slug }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <p class="section-title">Neue Firma</p>
+              <div class="form-group">
+                <label>Name</label>
+                <input v-model="newCompanyName" type="text" placeholder="Containerdienst Muster" />
+              </div>
+              <div class="form-group">
+                <label>Basis-PLZ</label>
+                <input v-model="newCompanyZip" type="text" inputmode="numeric" placeholder="84513" />
+              </div>
+              <button class="btn-primary btn-sm" @click="createCompany" :disabled="!newCompanyName.trim()">Firma erstellen</button>
+            </div>
+
+            <div class="card">
+              <p class="section-title">E-Mail zuweisen</p>
+              <div class="form-group">
+                <label>Firma</label>
+                <select v-model="assignCompanyId">
+                  <option v-for="company in companies" :key="company.companyId" :value="company.companyId">{{ company.name }}</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>E-Mail</label>
+                <input v-model="assignEmail" type="email" placeholder="fahrer@firma.de" />
+              </div>
+              <div class="form-group">
+                <label>Rolle</label>
+                <select v-model="assignRole">
+                  <option value="driver">Fahrer</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <button class="btn-primary btn-sm" @click="assignCompanyUser" :disabled="!assignCompanyId || !assignEmail.trim()">Zuweisen</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -319,6 +408,10 @@ function logLevelClass(level: ErrorLog['level']) {
       <button class="bottom-nav-item" :class="{ active: activeTab === 'logs' }" @click="activeTab = 'logs'">
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
         Fehler
+      </button>
+      <button class="bottom-nav-item" :class="{ active: activeTab === 'companies' }" @click="activeTab = 'companies'">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4M9 9h1m-1 4h1m-1 4h1m6-4h1m-1 4h1"/></svg>
+        Firmen
       </button>
     </nav>
   </div>
@@ -386,6 +479,13 @@ function logLevelClass(level: ErrorLog['level']) {
   font-size: 0.88rem;
   color: var(--text-primary);
   word-break: break-word;
+}
+.company-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.company-row {
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem;
+  background: #181818;
 }
 .mt-1 { margin-top: 0.4rem; }
 .mb-1 { margin-bottom: 0.4rem; }

@@ -1,5 +1,3 @@
-// ---- Token helpers (kept for Firebase auth store compatibility) ----
-
 export function setToken(token: string): void {
   localStorage.setItem('cdm_token', token)
 }
@@ -12,20 +10,73 @@ export function hasToken(): boolean {
   return !!localStorage.getItem('cdm_token')
 }
 
-// ---- API models ----
-
 export type WasteType = 'Mixed' | 'Wood' | 'Metal' | 'Concrete' | 'Paper' | 'Plastic' | 'Organic' | 'Electronics'
 export type BookingStatus = 'Requested' | 'Scheduled' | 'Delivered' | 'Filling' | 'EmptyRequested' | 'Retrieved' | 'Closed' | 'Cancelled'
 export type ContainerStatus = 'InYard' | 'InTransit' | 'OnSite' | 'ReadyForPickup' | 'AtWeighStation' | 'Decommissioned'
 export type ContainerSize = 'Small' | 'Medium' | 'Large' | 'Roll'
 export type DriverTripKind = 'delivery' | 'pickup'
 export type DriverReportPhotoSide = 'front' | 'right' | 'back' | 'left'
+export type UserRole = 'customer' | 'driver' | 'admin' | 'superadmin'
+
+export interface CompanyRole {
+  userId: string
+  companyId: string
+  role: UserRole
+  email: string
+  assignedAt: string
+  assignedBy: string
+}
+
+export interface CustomerProfile {
+  userId: string
+  companyName: string
+  contactName: string
+  email: string
+  phone: string
+  billingAddress: string
+  vatId: string
+  createdAt: string
+}
+
+export interface MeProfile {
+  userId: string
+  roles: UserRole[]
+  companyRoles: CompanyRole[]
+  profile: CustomerProfile | null
+}
+
+export interface ContainerCompany {
+  companyId: string
+  name: string
+  slug: string
+  contactEmail: string
+  baseZipCode: string
+  baseLat: number | null
+  baseLon: number | null
+  active: boolean
+  createdAt: string
+}
+
+export interface ApiTokenInfo {
+  tokenId: string
+  name: string
+  createdAt: string
+  expiresAt: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+}
+
+export interface CreatedApiToken extends ApiTokenInfo {
+  token: string
+}
 
 export interface Site {
   siteId: string
   customerId: string
+  companyId: string | null
   name: string | null
   address: string | null
+  zipCode: string
   lat: number
   lon: number
   orientationNote: string | null
@@ -49,6 +100,7 @@ export interface BookingBySite {
   siteId: string
   bookingId: string
   customerId: string
+  companyId?: string
   wasteType: WasteType
   status: BookingStatus
   assignedContainerNumber: string | null
@@ -61,6 +113,7 @@ export interface BookingBySite {
 export interface ContainerBooking {
   bookingId: string
   customerId: string
+  companyId?: string
   siteId: string
   orderId: string
   wasteType: WasteType
@@ -82,6 +135,7 @@ export interface DriverTrip {
   scheduledAt: string
   bookingId: string
   customerId: string
+  companyId?: string
   siteId: string
   containerNumber: string | null
   wasteType: WasteType
@@ -130,6 +184,7 @@ export interface DriverReport {
 export interface Order {
   orderId: string
   customerId: string
+  companyId?: string
   siteId: string
   createdAt: string
   requestedDeliveryAt: string | null
@@ -169,569 +224,303 @@ export interface Driver {
   name: string
 }
 
-// ---- In-memory mock store ----
+const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) || '/api').replace(/\/+$/, '')
 
-import { SITES, CONTAINERS, DRIVER_TRIPS, ANFAHRTEN, MOCK_ORDERS, MOCK_INVOICES, MOCK_ERROR_LOGS, MOCK_DRIVERS } from './mockData'
-
-function uid(): string {
-  return Math.random().toString(36).slice(2, 10)
+function apiPath(path: string): string {
+  return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-function delay<T>(val: T, ms = 350): Promise<T> {
-  return new Promise(resolve => setTimeout(() => resolve(val), ms))
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers)
+  const token = localStorage.getItem('cdm_token')
+  if (token) {
+    // CDM API tokens use a custom header; Firebase ID tokens go through Authorization.
+    if (token.startsWith('cdm_')) headers.set('X-CDM-API-Token', token)
+    else headers.set('Authorization', `Bearer ${token}`)
+  }
+  if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+
+  const response = await fetch(apiPath(path), { ...init, headers })
+  if (!response.ok) {
+    const text = await response.text()
+    let message = text || response.statusText
+    try {
+      const parsed = JSON.parse(text)
+      message = parsed.title || parsed.message || parsed.detail || message
+    } catch {
+      // Keep raw server text.
+    }
+    throw new Error(message)
+  }
+  if (response.status === 204) return undefined as T
+  return response.json() as Promise<T>
 }
 
-const sites: Site[] = [...SITES]
-const containers: CustomerContainerView[] = [...CONTAINERS]
-const driverTrips: DriverTrip[] = [...DRIVER_TRIPS]
-const anfahrtenMap: Record<string, Anfahrt[]> = Object.fromEntries(
-  Object.entries(ANFAHRTEN).map(([k, v]) => [k, [...v]])
-)
-const orders: Order[] = [...MOCK_ORDERS]
-const invoices: Invoice[] = [...MOCK_INVOICES]
-const errorLogs: ErrorLog[] = [...MOCK_ERROR_LOGS]
-const drivers: Driver[] = [...MOCK_DRIVERS]
-
-// in-memory video URLs keyed by anfahrtId
-const videoUrls: Record<string, string> = {}
-
-const BILLING_RATES: Record<WasteType, number> = {
-  Mixed: 320,
-  Wood: 280,
-  Metal: 450,
-  Concrete: 550,
-  Paper: 180,
-  Plastic: 220,
-  Organic: 200,
-  Electronics: 480,
+function iso(value: unknown): string {
+  return typeof value === 'string' ? value : new Date().toISOString()
 }
 
-const REQUIRED_REPORT_SIDES: DriverReportPhotoSide[] = ['front', 'right', 'back', 'left']
-
-function roundCurrency(value: number): number {
-  return Math.round(value * 100) / 100
+function maybeIso(value: unknown): string | null {
+  return typeof value === 'string' && value ? value : null
 }
 
-function cloneOrder(order: Order): Order {
+function normalizeArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? value as T[] : []
+}
+
+function normalizeSite(row: any): Site {
   return {
-    ...order,
-    bookingIds: order.bookingIds ? [...order.bookingIds] : null,
-    reports: order.reports.map(report => ({
-      ...report,
-      photos: report.photos.map(photo => ({ ...photo })),
-    })),
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    customerId: String(row.customerId ?? row.CustomerId ?? ''),
+    companyId: row.companyId ?? row.CompanyId ?? null,
+    name: row.name ?? row.Name ?? null,
+    address: row.address ?? row.Address ?? null,
+    zipCode: row.zipCode ?? row.ZipCode ?? '',
+    lat: Number(row.lat ?? row.Lat ?? 0),
+    lon: Number(row.lon ?? row.Lon ?? 0),
+    orientationNote: row.orientationNote ?? row.OrientationNote ?? null,
+    createdAt: iso(row.createdAt ?? row.CreatedAt),
+    active: Boolean(row.active ?? row.Active ?? true),
   }
 }
 
-function cloneTrip(trip: DriverTrip): DriverTrip {
-  return { ...trip }
+function normalizeContainer(row: any): CustomerContainerView {
+  return {
+    bookingId: String(row.bookingId ?? row.BookingId ?? ''),
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    containerNumber: row.containerNumber ?? row.ContainerNumber ?? row.assignedContainerNumber ?? null,
+    wasteType: row.wasteType ?? row.WasteType ?? 'Mixed',
+    status: row.status ?? row.Status ?? row.bookingStatus ?? 'Requested',
+    fillLevel: Number(row.fillLevel ?? row.FillLevel ?? row.currentFillLevel ?? row.CurrentFillLevel ?? 0),
+    lat: row.lat ?? row.Lat ?? null,
+    lon: row.lon ?? row.Lon ?? null,
+    expectedEmptyingAt: maybeIso(row.expectedEmptyingAt ?? row.ExpectedEmptyingAt),
+  }
 }
 
-function findSite(siteId: string): Site | undefined {
-  return sites.find(site => site.siteId === siteId)
+function normalizeBooking(row: any): ContainerBooking {
+  return {
+    bookingId: String(row.bookingId ?? row.BookingId ?? ''),
+    customerId: String(row.customerId ?? row.CustomerId ?? ''),
+    companyId: row.companyId ?? row.CompanyId,
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    orderId: String(row.orderId ?? row.OrderId ?? ''),
+    wasteType: row.wasteType ?? row.WasteType ?? 'Mixed',
+    assignedContainerNumber: row.assignedContainerNumber ?? row.AssignedContainerNumber ?? null,
+    status: row.status ?? row.Status ?? 'Requested',
+    requestedAt: iso(row.requestedAt ?? row.RequestedAt),
+    scheduledDeliveryAt: maybeIso(row.scheduledDeliveryAt ?? row.ScheduledDeliveryAt),
+    deliveredAt: maybeIso(row.deliveredAt ?? row.DeliveredAt),
+    emptyRequestedAt: maybeIso(row.emptyRequestedAt ?? row.EmptyRequestedAt),
+    expectedEmptyingAt: maybeIso(row.expectedEmptyingAt ?? row.ExpectedEmptyingAt),
+    retrievedAt: maybeIso(row.retrievedAt ?? row.RetrievedAt),
+    currentFillLevel: Number(row.currentFillLevel ?? row.CurrentFillLevel ?? 0),
+    notes: row.notes ?? row.Notes ?? null,
+  }
 }
 
-function findContainer(bookingId: string): CustomerContainerView | undefined {
-  return containers.find(container => container.bookingId === bookingId)
+function normalizeOrder(row: any): Order {
+  return {
+    orderId: String(row.orderId ?? row.OrderId ?? ''),
+    customerId: String(row.customerId ?? row.CustomerId ?? ''),
+    companyId: row.companyId ?? row.CompanyId,
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    createdAt: iso(row.createdAt ?? row.CreatedAt),
+    requestedDeliveryAt: maybeIso(row.requestedDeliveryAt ?? row.RequestedDeliveryAt),
+    notes: row.notes ?? row.Notes ?? null,
+    bookingIds: normalizeArray<string>(row.bookingIds ?? row.BookingIds).map(String),
+    status: row.status ?? row.Status ?? 'Requested',
+    assignedDriverId: row.assignedDriverId ?? row.AssignedDriverId ?? null,
+    reports: normalizeArray<DriverReport>(row.reports ?? row.Reports),
+  }
 }
 
-function findOrderByBookingId(bookingId: string): Order | undefined {
-  return orders.find(order => order.bookingIds?.includes(bookingId))
+function normalizeTrip(row: any): DriverTrip {
+  return {
+    dayBucket: row.dayBucket ?? row.DayBucket ?? null,
+    driverUserId: String(row.driverUserId ?? row.DriverUserId ?? ''),
+    scheduledAt: iso(row.scheduledAt ?? row.ScheduledAt),
+    bookingId: String(row.bookingId ?? row.BookingId ?? ''),
+    customerId: String(row.customerId ?? row.CustomerId ?? ''),
+    companyId: row.companyId ?? row.CompanyId,
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    containerNumber: row.containerNumber ?? row.ContainerNumber ?? null,
+    wasteType: row.wasteType ?? row.WasteType ?? 'Mixed',
+    tripKind: row.tripKind ?? row.TripKind ?? null,
+    bookingStatus: row.bookingStatus ?? row.BookingStatus ?? 'Requested',
+    siteName: row.siteName ?? row.SiteName ?? null,
+    siteAddress: row.siteAddress ?? row.SiteAddress ?? null,
+    siteLat: Number(row.siteLat ?? row.SiteLat ?? 0),
+    siteLon: Number(row.siteLon ?? row.SiteLon ?? 0),
+    createdAt: iso(row.createdAt ?? row.CreatedAt),
+    reportCompletedAt: maybeIso(row.reportCompletedAt ?? row.ReportCompletedAt),
+  }
 }
 
-function listTripsForBooking(bookingId: string): DriverTrip[] {
-  return driverTrips.filter(trip => trip.bookingId === bookingId)
+function normalizeAnfahrt(row: any): Anfahrt {
+  return {
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    anfahrtId: String(row.anfahrtId ?? row.AnfahrtId ?? ''),
+    uploadedByUserId: String(row.uploadedByUserId ?? row.UploadedByUserId ?? ''),
+    uploadedAt: iso(row.uploadedAt ?? row.UploadedAt),
+    lat: Number(row.lat ?? row.Lat ?? 0),
+    lon: Number(row.lon ?? row.Lon ?? 0),
+    orientationNote: row.orientationNote ?? row.OrientationNote ?? null,
+    videoStorageKey: row.videoStorageKey ?? row.VideoStorageKey ?? null,
+    videoContentType: row.videoContentType ?? row.VideoContentType ?? null,
+    videoSizeBytes: Number(row.videoSizeBytes ?? row.VideoSizeBytes ?? 0),
+  }
 }
 
-function reportForTrip(bookingId: string, tripKind: DriverTripKind): DriverReport | undefined {
-  return findOrderByBookingId(bookingId)?.reports.find(report => report.bookingId === bookingId && report.tripKind === tripKind)
+function normalizeInvoice(row: any): Invoice {
+  return {
+    invoiceId: String(row.invoiceId ?? row.InvoiceId ?? ''),
+    customerId: String(row.customerId ?? row.CustomerId ?? ''),
+    bookingId: String(row.bookingId ?? row.BookingId ?? ''),
+    siteId: String(row.siteId ?? row.SiteId ?? ''),
+    wasteType: row.wasteType ?? row.WasteType ?? 'Mixed',
+    siteName: row.siteName ?? row.SiteName ?? null,
+    issuedAt: iso(row.issuedAt ?? row.IssuedAt),
+    amount: Number(row.amount ?? row.Amount ?? row.totalGross ?? row.TotalGross ?? 0),
+    currency: row.currency ?? row.Currency ?? 'EUR',
+    status: (row.status ?? row.Status ?? (row.paid ?? row.Paid ? 'paid' : 'unpaid')) as 'paid' | 'unpaid',
+    weightKg: row.weightKg ?? row.WeightKg ?? null,
+    pricePerKg: row.pricePerKg ?? row.PricePerKg ?? null,
+    damageCharge: row.damageCharge ?? row.DamageCharge ?? null,
+  }
 }
 
-function reportCompletedAt(bookingId: string, tripKind: DriverTripKind): string | null {
-  return reportForTrip(bookingId, tripKind)?.createdAt ?? null
+function normalizeIssue(row: any): ErrorLog {
+  const severity = row.severity ?? row.Severity ?? 'info'
+  const level = severity === 2 || severity === 3 || String(severity).toLowerCase() === 'error' || String(severity).toLowerCase() === 'critical'
+    ? 'error'
+    : severity === 1 || String(severity).toLowerCase() === 'warning'
+      ? 'warn'
+      : 'info'
+  return {
+    logId: String(row.logId ?? row.issueId ?? row.IssueId ?? ''),
+    occurredAt: iso(row.occurredAt ?? row.createdAt ?? row.CreatedAt),
+    level,
+    message: row.message ?? row.title ?? row.Title ?? '',
+    context: row.context ?? row.relatedEntity ?? row.RelatedEntity ?? null,
+  }
 }
 
-function latestTripForBooking(bookingId: string, tripKind?: DriverTripKind): DriverTrip | undefined {
-  const trips = listTripsForBooking(bookingId)
-    .filter(trip => !tripKind || trip.tripKind === tripKind)
-    .sort((left, right) => {
-      const createdDelta = new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-      if (createdDelta !== 0) return createdDelta
-      return new Date(right.scheduledAt).getTime() - new Date(left.scheduledAt).getTime()
+export const meApi = {
+  get(): Promise<MeProfile> {
+    return request<MeProfile>('/me')
+  },
+
+  register(email: string, contactName?: string): Promise<MeProfile> {
+    return request<MeProfile>('/me/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, contactName }),
     })
+  },
 
-  return trips[0]
-}
+  listApiTokens(): Promise<ApiTokenInfo[]> {
+    return request<ApiTokenInfo[]>('/me/api-tokens')
+  },
 
-function requestedAtForBooking(bookingId: string): string {
-  const order = findOrderByBookingId(bookingId)
-  const trip = latestTripForBooking(bookingId, 'delivery') ?? latestTripForBooking(bookingId)
-  return order?.createdAt ?? trip?.createdAt ?? new Date().toISOString()
-}
-
-function deliveryScheduledAtForBooking(bookingId: string): string | null {
-  const order = findOrderByBookingId(bookingId)
-  const trip = latestTripForBooking(bookingId, 'delivery')
-  return trip?.scheduledAt ?? order?.requestedDeliveryAt ?? null
-}
-
-function pickupTripForBooking(bookingId: string): DriverTrip | undefined {
-  return latestTripForBooking(bookingId, 'pickup')
-}
-
-function nextContainerNumber(): string {
-  return `C-${Math.floor(1000 + Math.random() * 9000)}`
-}
-
-function transportAmount(invoice: Invoice): number {
-  if (invoice.weightKg !== null && invoice.pricePerKg !== null) {
-    return roundCurrency(invoice.weightKg * invoice.pricePerKg)
-  }
-  return BILLING_RATES[invoice.wasteType]
-}
-
-function recalculateInvoiceAmount(invoice: Invoice): void {
-  invoice.amount = roundCurrency(transportAmount(invoice) + (invoice.damageCharge ?? 0))
-}
-
-function syncInvoiceForRetrievedBooking(bookingId: string): Invoice {
-  const container = findContainer(bookingId)
-  if (!container) {
-    throw new Error('Booking not found')
-  }
-
-  const site = findSite(container.siteId)
-  const order = findOrderByBookingId(bookingId)
-  const pickupReport = reportForTrip(bookingId, 'pickup')
-  const damageCharge = pickupReport && pickupReport.damageCharge > 0 ? roundCurrency(pickupReport.damageCharge) : null
-  let invoice = invoices.find(item => item.bookingId === bookingId)
-
-  if (!invoice) {
-    invoice = {
-      invoiceId: `inv-${uid()}`,
-      customerId: order?.customerId ?? 'cust-demo',
-      bookingId,
-      siteId: container.siteId,
-      wasteType: container.wasteType,
-      siteName: site?.name ?? null,
-      issuedAt: new Date().toISOString(),
-      amount: BILLING_RATES[container.wasteType],
-      currency: 'EUR',
-      status: 'unpaid',
-      weightKg: null,
-      pricePerKg: null,
-      damageCharge,
-    }
-    invoices.push(invoice)
-  } else {
-    invoice.siteId = container.siteId
-    invoice.wasteType = container.wasteType
-    invoice.siteName = site?.name ?? null
-    invoice.damageCharge = damageCharge
-  }
-
-  recalculateInvoiceAmount(invoice)
-  return invoice
-}
-
-function deriveOrderStatus(order: Order): BookingStatus {
-  const bookingStates = (order.bookingIds ?? [])
-    .map(bookingId => findContainer(bookingId)?.status)
-    .filter((status): status is BookingStatus => Boolean(status))
-
-  if (bookingStates.length === 0) return order.status
-  if (bookingStates.every(status => status === 'Cancelled')) return 'Cancelled'
-  if (bookingStates.every(status => status === 'Closed')) return 'Closed'
-  if (bookingStates.every(status => status === 'Retrieved' || status === 'Closed')) {
-    return bookingStates.some(status => status === 'Retrieved') ? 'Retrieved' : 'Closed'
-  }
-  if (bookingStates.some(status => status === 'EmptyRequested')) return 'EmptyRequested'
-  if (bookingStates.some(status => status === 'Filling')) return 'Filling'
-  if (bookingStates.some(status => status === 'Delivered')) return 'Delivered'
-  if (bookingStates.some(status => status === 'Scheduled')) return 'Scheduled'
-  if (bookingStates.some(status => status === 'Requested')) return 'Requested'
-  return order.status
-}
-
-function syncOrderState(order: Order | undefined): void {
-  if (!order) return
-  order.status = deriveOrderStatus(order)
-}
-
-function syncTripsForBooking(bookingId: string): void {
-  const container = findContainer(bookingId)
-  if (!container) return
-
-  const site = findSite(container.siteId)
-  const order = findOrderByBookingId(bookingId)
-
-  listTripsForBooking(bookingId).forEach(trip => {
-    trip.siteId = container.siteId
-    trip.containerNumber = container.containerNumber
-    trip.wasteType = container.wasteType
-    trip.bookingStatus = container.status
-    trip.siteName = site?.name ?? null
-    trip.siteAddress = site?.address ?? null
-    trip.siteLat = site?.lat ?? 0
-    trip.siteLon = site?.lon ?? 0
-
-    if (order?.assignedDriverId) {
-      trip.driverUserId = order.assignedDriverId
-    }
-
-    if (trip.tripKind) {
-      trip.reportCompletedAt = reportCompletedAt(bookingId, trip.tripKind)
-    }
-
-    if (trip.tripKind === 'pickup' && container.expectedEmptyingAt) {
-      trip.scheduledAt = container.expectedEmptyingAt
-      trip.dayBucket = container.expectedEmptyingAt.slice(0, 10)
-    }
-
-    if (
-      trip.tripKind === 'delivery' &&
-      order?.requestedDeliveryAt &&
-      (container.status === 'Requested' || container.status === 'Scheduled')
-    ) {
-      trip.scheduledAt = order.requestedDeliveryAt
-      trip.dayBucket = order.requestedDeliveryAt.slice(0, 10)
-    }
-  })
-}
-
-function syncLinkedState(bookingId: string): void {
-  syncTripsForBooking(bookingId)
-  syncOrderState(findOrderByBookingId(bookingId))
-}
-
-function ensureDeliveryTrip(bookingId: string, scheduledAt?: string | null): void {
-  const container = findContainer(bookingId)
-  if (!container) return
-
-  const site = findSite(container.siteId)
-  const order = findOrderByBookingId(bookingId)
-  const deliveryAt = scheduledAt ?? order?.requestedDeliveryAt ?? new Date(Date.now() + 2 * 86400000).toISOString()
-  const existingTrip = latestTripForBooking(bookingId, 'delivery')
-
-  if (existingTrip) {
-    if (container.status === 'Requested' || container.status === 'Scheduled') {
-      existingTrip.scheduledAt = deliveryAt
-      existingTrip.dayBucket = deliveryAt.slice(0, 10)
-    }
-    return
-  }
-
-  driverTrips.push({
-    dayBucket: deliveryAt.slice(0, 10),
-    driverUserId: order?.assignedDriverId ?? 'driver-demo',
-    scheduledAt: deliveryAt,
-    bookingId,
-    customerId: order?.customerId ?? 'cust-demo',
-    siteId: container.siteId,
-    containerNumber: container.containerNumber,
-    wasteType: container.wasteType,
-    tripKind: 'delivery',
-    bookingStatus: container.status,
-    siteName: site?.name ?? null,
-    siteAddress: site?.address ?? null,
-    siteLat: site?.lat ?? 0,
-    siteLon: site?.lon ?? 0,
-    createdAt: new Date().toISOString(),
-    reportCompletedAt: reportCompletedAt(bookingId, 'delivery'),
-  })
-}
-
-function ensurePickupTrip(bookingId: string): void {
-  const container = findContainer(bookingId)
-  if (!container?.expectedEmptyingAt) return
-
-  const site = findSite(container.siteId)
-  const order = findOrderByBookingId(bookingId)
-  const existingTrip = pickupTripForBooking(bookingId)
-
-  if (existingTrip) {
-    existingTrip.scheduledAt = container.expectedEmptyingAt
-    existingTrip.dayBucket = container.expectedEmptyingAt.slice(0, 10)
-    existingTrip.driverUserId = order?.assignedDriverId ?? existingTrip.driverUserId
-    return
-  }
-
-  driverTrips.push({
-    dayBucket: container.expectedEmptyingAt.slice(0, 10),
-    driverUserId: order?.assignedDriverId ?? 'driver-demo',
-    scheduledAt: container.expectedEmptyingAt,
-    bookingId,
-    customerId: order?.customerId ?? 'cust-demo',
-    siteId: container.siteId,
-    containerNumber: container.containerNumber,
-    wasteType: container.wasteType,
-    tripKind: 'pickup',
-    bookingStatus: container.status,
-    siteName: site?.name ?? null,
-    siteAddress: site?.address ?? null,
-    siteLat: site?.lat ?? 0,
-    siteLon: site?.lon ?? 0,
-    createdAt: new Date().toISOString(),
-    reportCompletedAt: reportCompletedAt(bookingId, 'pickup'),
-  })
-}
-
-function createOrderInStore(
-  siteId: string,
-  body: { wasteTypes: WasteType[]; requestedDeliveryAt?: string; notes?: string }
-): Order {
-  const site = findSite(siteId)
-  if (!site) throw new Error('Site not found')
-  if (body.wasteTypes.length === 0) throw new Error('At least one waste type is required')
-
-  const orderId = `ord-${uid()}`
-  const defaultDeliveryAt = body.requestedDeliveryAt ?? new Date(Date.now() + 2 * 86400000).toISOString()
-
-  const bookingIds = body.wasteTypes.map(wasteType => {
-    const bookingId = `bk-${uid()}`
-    containers.push({
-      bookingId,
-      siteId,
-      containerNumber: null,
-      wasteType,
-      status: 'Requested',
-      fillLevel: 0,
-      lat: site.lat,
-      lon: site.lon,
-      expectedEmptyingAt: null,
+  createApiToken(name?: string): Promise<CreatedApiToken> {
+    return request<CreatedApiToken>('/me/api-tokens', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
     })
-    return bookingId
-  })
+  },
 
-  const order: Order = {
-    orderId,
-    customerId: site.customerId,
-    siteId,
-    createdAt: new Date().toISOString(),
-    requestedDeliveryAt: body.requestedDeliveryAt ?? null,
-    notes: body.notes ?? null,
-    bookingIds,
-    status: 'Requested',
-    assignedDriverId: null,
-    reports: [],
-  }
-
-  orders.push(order)
-
-  bookingIds.forEach(bookingId => {
-    ensureDeliveryTrip(bookingId, defaultDeliveryAt)
-    syncLinkedState(bookingId)
-  })
-
-  return order
+  revokeApiToken(tokenId: string): Promise<void> {
+    return request<void>(`/me/api-tokens/${tokenId}`, { method: 'DELETE' })
+  },
 }
 
-function normalizeMockState(): void {
-  invoices.forEach(invoice => {
-    recalculateInvoiceAmount(invoice)
-    const container = findContainer(invoice.bookingId)
-    if (!container) return
-    if (invoice.status === 'paid' && (container.status === 'Retrieved' || container.status === 'Closed')) {
-      container.status = 'Closed'
-    }
-  })
-
-  containers.forEach(container => syncTripsForBooking(container.bookingId))
-  orders.forEach(order => syncOrderState(order))
+export interface TestLoginResponse {
+  token: string
+  userId: string
+  role: UserRole
+  companyId: string
+  email: string
 }
 
-normalizeMockState()
-
-// ---- Sites API ----
+export const testAuthApi = {
+  /** Test-only login; backend must have CDM_TESTING_ENABLED=true. */
+  login(role: UserRole): Promise<TestLoginResponse> {
+    return request<TestLoginResponse>(`/test/login?role=${encodeURIComponent(role)}`, {
+      method: 'POST',
+    })
+  },
+}
 
 export const sitesApi = {
-  list(): Promise<Site[]> {
-    return delay([...sites])
+  async list(): Promise<Site[]> {
+    return (await request<any[]>('/my/sites')).map(normalizeSite)
   },
 
-  get(siteId: string): Promise<Site> {
-    const s = sites.find(x => x.siteId === siteId)
-    if (!s) return Promise.reject(new Error('Site not found'))
-    return delay({ ...s })
+  async get(siteId: string): Promise<Site> {
+    return normalizeSite(await request<any>(`/my/sites/${siteId}`))
   },
 
-  create(body: { name: string; address: string; lat: number; lon: number; orientationNote?: string }): Promise<Site> {
-    const site: Site = {
-      siteId: `site-${uid()}`,
-      customerId: 'cust-demo',
-      name: body.name,
-      address: body.address,
-      lat: body.lat,
-      lon: body.lon,
-      orientationNote: body.orientationNote ?? null,
-      createdAt: new Date().toISOString(),
-      active: true,
-    }
-    sites.push(site)
-    anfahrtenMap[site.siteId] = []
-    return delay({ ...site })
+  async create(body: { name: string; address: string; zipCode?: string; lat: number; lon: number; orientationNote?: string }): Promise<Site> {
+    return normalizeSite(await request<any>('/my/sites', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }))
   },
 
-  listContainers(siteId: string): Promise<BookingBySite[]> {
-    const result: BookingBySite[] = containers
-      .filter(c => c.siteId === siteId)
-      .map(c => ({
-        siteId: c.siteId,
-        bookingId: c.bookingId,
-        customerId: findOrderByBookingId(c.bookingId)?.customerId ?? 'cust-demo',
-        wasteType: c.wasteType,
-        status: c.status,
-        assignedContainerNumber: c.containerNumber,
-        requestedAt: requestedAtForBooking(c.bookingId),
-        scheduledDeliveryAt: deliveryScheduledAtForBooking(c.bookingId),
-        expectedEmptyingAt: c.expectedEmptyingAt,
-        currentFillLevel: c.fillLevel,
-      }))
-    return delay(result)
+  async listContainers(siteId: string): Promise<BookingBySite[]> {
+    return request<BookingBySite[]>(`/my/sites/${siteId}/containers`)
   },
 
-  createOrder(
-    siteId: string,
-    body: { wasteTypes: WasteType[]; requestedDeliveryAt?: string; notes?: string }
-  ): Promise<Order> {
-    try {
-      const order = createOrderInStore(siteId, body)
-      return delay(cloneOrder(order))
-    } catch (error) {
-      return Promise.reject(error)
-    }
+  async createOrder(siteId: string, body: { wasteTypes: WasteType[]; requestedDeliveryAt?: string; notes?: string }): Promise<Order> {
+    return normalizeOrder(await request<any>(`/my/sites/${siteId}/orders`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }))
   },
 
-  listAnfahrten(siteId: string): Promise<Anfahrt[]> {
-    return delay([...(anfahrtenMap[siteId] ?? [])])
+  async listAnfahrten(siteId: string): Promise<Anfahrt[]> {
+    return (await request<any[]>(`/my/sites/${siteId}/anfahrten`)).map(normalizeAnfahrt)
   },
 
   uploadAnfahrt(siteId: string, form: FormData): Promise<Anfahrt> {
-    const site = findSite(siteId)
-    if (!site) return Promise.reject(new Error('Site not found'))
-
-    const video = form.get('video')
-    if (!(video instanceof Blob)) {
-      return Promise.reject(new Error('No anfahrt video uploaded'))
-    }
-
-    const parsedLat = Number(form.get('lat'))
-    const parsedLon = Number(form.get('lon'))
-    const orientationNoteValue = form.get('orientationNote')
-    const orientationNote = typeof orientationNoteValue === 'string'
-      ? orientationNoteValue
-      : site.orientationNote
-    const anfahrtId = `anf-${uid()}`
-    const anfahrt: Anfahrt = {
-      siteId,
-      anfahrtId,
-      uploadedByUserId: 'cust-demo',
-      uploadedAt: new Date().toISOString(),
-      lat: Number.isFinite(parsedLat) ? parsedLat : site.lat,
-      lon: Number.isFinite(parsedLon) ? parsedLon : site.lon,
-      orientationNote: orientationNote ?? null,
-      videoStorageKey: anfahrtId,
-      videoContentType: video.type || 'video/webm',
-      videoSizeBytes: video.size,
-    }
-    // Store an object URL so the video can be played back in-session
-    videoUrls[anfahrtId] = URL.createObjectURL(video)
-    if (!anfahrtenMap[siteId]) anfahrtenMap[siteId] = []
-    anfahrtenMap[siteId].unshift(anfahrt)
-    return delay(anfahrt)
+    return request<any>(`/my/sites/${siteId}/anfahrten`, { method: 'POST', body: form }).then(normalizeAnfahrt)
   },
 
-  videoUrl(_siteId: string, anfahrtId: string): string {
-    return videoUrls[anfahrtId] ?? ''
+  videoUrl(siteId: string, anfahrtId: string): string {
+    return apiPath(`/my/sites/${siteId}/anfahrten/${anfahrtId}/video`)
   },
-}
-
-// ---- Customer containers API ----
-
-function containerToBooking(c: CustomerContainerView): ContainerBooking {
-  const order = findOrderByBookingId(c.bookingId)
-  const pickupTrip = pickupTripForBooking(c.bookingId)
-  const deliveryAt = deliveryScheduledAtForBooking(c.bookingId)
-  const invoice = invoices.find(item => item.bookingId === c.bookingId)
-
-  return {
-    bookingId: c.bookingId,
-    customerId: order?.customerId ?? 'cust-demo',
-    siteId: c.siteId,
-    orderId: order?.orderId ?? '',
-    wasteType: c.wasteType,
-    assignedContainerNumber: c.containerNumber,
-    status: c.status,
-    requestedAt: order?.createdAt ?? requestedAtForBooking(c.bookingId),
-    scheduledDeliveryAt: deliveryAt,
-    deliveredAt: c.status === 'Delivered' || c.status === 'Filling' || c.status === 'EmptyRequested' || c.status === 'Retrieved' || c.status === 'Closed'
-      ? deliveryAt
-      : null,
-    emptyRequestedAt: c.status === 'EmptyRequested' || c.status === 'Retrieved' || c.status === 'Closed'
-      ? pickupTrip?.createdAt ?? pickupTrip?.scheduledAt ?? c.expectedEmptyingAt
-      : null,
-    expectedEmptyingAt: c.expectedEmptyingAt,
-    retrievedAt: c.status === 'Retrieved' || c.status === 'Closed'
-      ? invoice?.issuedAt ?? pickupTrip?.scheduledAt ?? null
-      : null,
-    currentFillLevel: c.fillLevel,
-    notes: order?.notes ?? null,
-  }
 }
 
 export const containersApi = {
-  list(): Promise<CustomerContainerView[]> {
-    normalizeMockState()
-    return delay([...containers])
+  async list(): Promise<CustomerContainerView[]> {
+    return (await request<any[]>('/my/containers')).map(normalizeContainer)
   },
 
-  requestContainer(body: {
-    siteId: string
-    wasteType: WasteType
-    requestedDeliveryAt?: string
-    notes?: string
-  }): Promise<ContainerBooking> {
-    try {
-      const order = createOrderInStore(body.siteId, {
-        wasteTypes: [body.wasteType],
-        requestedDeliveryAt: body.requestedDeliveryAt,
-        notes: body.notes,
-      })
-      const bookingId = order.bookingIds?.[0]
-      const container = bookingId ? findContainer(bookingId) : undefined
-      if (!container) return Promise.reject(new Error('Booking not found'))
-      return delay(containerToBooking(container))
-    } catch (error) {
-      return Promise.reject(error)
-    }
+  async requestContainer(body: { siteId: string; wasteType: WasteType; requestedDeliveryAt?: string; notes?: string }): Promise<ContainerBooking> {
+    return normalizeBooking(await request<any>('/my/containers', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }))
   },
 
-  updateFill(bookingId: string, fillLevel: number, _note?: string): Promise<ContainerBooking> {
-    const c = containers.find(x => x.bookingId === bookingId)
-    if (!c) return Promise.reject(new Error('Booking not found'))
-    c.fillLevel = Math.max(0, Math.min(1, fillLevel))
-    if (c.status === 'Delivered') c.status = 'Filling'
-    syncLinkedState(bookingId)
-    return delay(containerToBooking(c))
+  async updateFill(bookingId: string, fillLevel: number, note?: string): Promise<ContainerBooking> {
+    return normalizeBooking(await request<any>(`/my/containers/${bookingId}/fill`, {
+      method: 'POST',
+      body: JSON.stringify({ fillLevel, note }),
+    }))
   },
 
-  requestEmptying(bookingId: string, preferredAt?: string): Promise<ContainerBooking> {
-    const c = containers.find(x => x.bookingId === bookingId)
-    if (!c) return Promise.reject(new Error('Booking not found'))
-    c.status = 'EmptyRequested'
-    c.expectedEmptyingAt = preferredAt ?? new Date(Date.now() + 2 * 86400000).toISOString()
-    ensurePickupTrip(bookingId)
-    syncLinkedState(bookingId)
-    return delay(containerToBooking(c))
+  async requestEmptying(bookingId: string, preferredAt?: string): Promise<ContainerBooking> {
+    const query = preferredAt ? `?preferredAt=${encodeURIComponent(preferredAt)}` : ''
+    return normalizeBooking(await request<any>(`/my/containers/${bookingId}/empty${query}`, { method: 'POST' }))
   },
 }
 
-// ---- Driver API ----
-
 export const driverApi = {
-  trips(_days = 2): Promise<DriverTrip[]> {
-    normalizeMockState()
-    return delay([...driverTrips].sort((left, right) => new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime()).map(cloneTrip))
+  async trips(days = 2): Promise<DriverTrip[]> {
+    return (await request<any[]>(`/driver/trips?days=${days}`)).map(normalizeTrip)
   },
 
   submitTripReport(
@@ -746,181 +535,96 @@ export const driverApi = {
       photos: Array<{ side: DriverReportPhotoSide; imageUrl: string }>
     }
   ): Promise<Order> {
-    const order = findOrderByBookingId(bookingId)
-    const container = findContainer(bookingId)
-
-    if (!order || !container) return Promise.reject(new Error('Booking not found'))
-    if (reportForTrip(bookingId, tripKind)) return Promise.reject(new Error('A report for this trip already exists'))
-
-    const signerName = body.signerName.trim()
-    if (!signerName) return Promise.reject(new Error('Signer name is required'))
-    if (!body.signatureDataUrl.trim()) return Promise.reject(new Error('Customer signature is required'))
-
-    const uniqueSides = new Set(body.photos.map(photo => photo.side))
-    const hasAllRequiredPhotos = REQUIRED_REPORT_SIDES.every(side => uniqueSides.has(side))
-    if (body.photos.length !== REQUIRED_REPORT_SIDES.length || !hasAllRequiredPhotos) {
-      return Promise.reject(new Error('Exactly four side photos are required'))
-    }
-
-    const normalizedDamageCharge = tripKind === 'pickup'
-      ? roundCurrency(Math.max(0, body.damageCharge ?? 0))
-      : 0
-    const damageNotes = body.damageNotes?.trim() ?? ''
-    if (tripKind === 'pickup' && normalizedDamageCharge > 0 && !damageNotes) {
-      return Promise.reject(new Error('Damage notes are required when charging for damages'))
-    }
-
-    const createdAt = new Date().toISOString()
-    const photos = REQUIRED_REPORT_SIDES.map(side => {
-      const photo = body.photos.find(item => item.side === side)
-      return {
-        side,
-        imageUrl: photo?.imageUrl ?? '',
-        capturedAt: createdAt,
-      }
-    })
-
-    order.reports.push({
-      reportId: `rpt-${uid()}`,
-      bookingId,
-      tripKind,
-      createdAt,
-      createdByDriverId: body.driverId,
-      signerName,
-      signatureDataUrl: body.signatureDataUrl,
-      damageNotes: damageNotes || null,
-      damageCharge: normalizedDamageCharge,
-      photos,
-    })
-
-    if (tripKind === 'delivery') {
-      if (container.status === 'Requested' || container.status === 'Scheduled') {
-        container.status = 'Delivered'
-        container.fillLevel = 0
-      }
-      if (!container.containerNumber) {
-        container.containerNumber = nextContainerNumber()
-      }
-
-      const site = findSite(container.siteId)
-      container.lat = site?.lat ?? container.lat
-      container.lon = site?.lon ?? container.lon
-      syncLinkedState(bookingId)
-      return delay(cloneOrder(order))
-    }
-
-    markContainerRetrieved(bookingId)
-    return delay(cloneOrder(order))
+    return request<any>(`/driver/trips/${bookingId}/report`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, tripKind }),
+    }).then(normalizeOrder)
   },
 }
 
-// ---- Admin API ----
-
 export const adminApi = {
-  listOrders(): Promise<Order[]> {
-    normalizeMockState()
-    return delay([...orders].reverse().map(cloneOrder))
+  async listOrders(): Promise<Order[]> {
+    return (await request<any[]>('/admin/orders')).map(normalizeOrder)
   },
 
   assignDriver(orderId: string, driverId: string): Promise<Order> {
-    const o = orders.find(x => x.orderId === orderId)
-    if (!o) return Promise.reject(new Error('Order not found'))
-    o.assignedDriverId = driverId
-    // update the linked driver trips
-    if (o.bookingIds) {
-      o.bookingIds.forEach(bkId => {
-        const c = containers.find(x => x.bookingId === bkId)
-        if (c && (c.status === 'Requested' || c.status === 'Scheduled')) {
-          c.status = 'Scheduled'
-        }
-        ensureDeliveryTrip(bkId)
-        syncLinkedState(bkId)
-      })
-    }
-    syncOrderState(o)
-    return delay(cloneOrder(o))
+    return request<any>(`/admin/orders/${orderId}/assign-driver`, {
+      method: 'POST',
+      body: JSON.stringify({ driverId }),
+    }).then(normalizeOrder)
   },
 
-  listSites(): Promise<Site[]> {
-    return delay([...sites])
+  async listSites(): Promise<Site[]> {
+    return (await request<any[]>('/admin/sites')).map(normalizeSite)
   },
 
-  listContainers(): Promise<CustomerContainerView[]> {
-    normalizeMockState()
-    return delay([...containers])
+  async listContainers(): Promise<CustomerContainerView[]> {
+    return (await request<any[]>('/admin/containers')).map(normalizeContainer)
   },
 
-  listErrorLogs(): Promise<ErrorLog[]> {
-    return delay([...errorLogs].reverse())
+  async listErrorLogs(): Promise<ErrorLog[]> {
+    return (await request<any[]>('/admin/issues')).map(normalizeIssue)
   },
 
-  addErrorLog(level: ErrorLog['level'], message: string, context?: string): void {
-    errorLogs.push({
-      logId: `log-${uid()}`,
-      occurredAt: new Date().toISOString(),
-      level,
-      message,
-      context: context ?? null,
+  addErrorLog(_level: ErrorLog['level'], _message: string, _context?: string): void {
+    // Operational issues are backend-generated in the real API.
+  },
+
+  async listDrivers(): Promise<Driver[]> {
+    return (await request<any[]>('/admin/drivers')).map(row => ({
+      driverId: String(row.driverId ?? row.DriverId ?? ''),
+      name: String(row.name ?? row.Name ?? row.email ?? row.Email ?? ''),
+    }))
+  },
+
+  listCompanies(): Promise<ContainerCompany[]> {
+    return request<ContainerCompany[]>('/admin/companies')
+  },
+
+  createCompany(body: { name: string; slug?: string; contactEmail?: string; baseZipCode?: string; baseLat?: number; baseLon?: number }): Promise<ContainerCompany> {
+    return request<ContainerCompany>('/admin/companies', {
+      method: 'POST',
+      body: JSON.stringify(body),
     })
   },
 
-  listDrivers(): Promise<Driver[]> {
-    return delay([...drivers])
+  assignCompanyUser(companyId: string, email: string, role: 'admin' | 'driver'): Promise<void> {
+    return request<void>(`/admin/companies/${companyId}/users`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    })
   },
 }
 
 export const ordersApi = {
-  listForCustomer(customerId: string): Promise<Order[]> {
-    normalizeMockState()
-    return delay(orders.filter(order => order.customerId === customerId).reverse().map(cloneOrder))
+  async listForCustomer(_customerId?: string): Promise<Order[]> {
+    return (await request<any[]>('/my/orders')).map(normalizeOrder)
   },
 }
-
-// ---- Invoice API ----
 
 export const invoiceApi = {
-  listForCustomer(customerId: string): Promise<Invoice[]> {
-    normalizeMockState()
-    return delay(invoices.filter(i => i.customerId === customerId).reverse())
+  async listForCustomer(_customerId?: string): Promise<Invoice[]> {
+    const sites = await sitesApi.list()
+    const nested = await Promise.all(sites.map(async site => {
+      const rows = await request<any[]>(`/my/sites/${site.siteId}/invoices`)
+      return rows.map(row => normalizeInvoice({ ...row, siteName: site.name }))
+    }))
+    return nested.flat().sort((left, right) => new Date(right.issuedAt).getTime() - new Date(left.issuedAt).getTime())
   },
 
-  listAll(): Promise<Invoice[]> {
-    normalizeMockState()
-    return delay([...invoices].reverse())
+  async listAll(): Promise<Invoice[]> {
+    return (await request<any[]>('/admin/invoices')).map(normalizeInvoice)
   },
 
-  applyTransportWeight(invoiceId: string, weightKg: number, pricePerKg: number): Promise<Invoice> {
-    const inv = invoices.find(i => i.invoiceId === invoiceId)
-    if (!inv) return Promise.reject(new Error('Invoice not found'))
-    inv.weightKg = weightKg
-    inv.pricePerKg = pricePerKg
-    recalculateInvoiceAmount(inv)
-    return delay({ ...inv })
+  applyTransportWeight(_invoiceId: string, _weightKg: number, _pricePerKg: number): Promise<Invoice> {
+    return Promise.reject(new Error('Weight assignment is handled by the backend import flow.'))
   },
 
-  markPaid(invoiceId: string): Promise<Invoice> {
-    const inv = invoices.find(i => i.invoiceId === invoiceId)
-    if (!inv) return Promise.reject(new Error('Invoice not found'))
-    inv.status = 'paid'
-    const container = findContainer(inv.bookingId)
-    if (container && (container.status === 'Retrieved' || container.status === 'Closed')) {
-      container.status = 'Closed'
-      syncLinkedState(inv.bookingId)
-    }
-    return delay({ ...inv })
+  markPaid(_invoiceId: string): Promise<Invoice> {
+    return Promise.reject(new Error('Invoice payment marking is not available yet.'))
   },
 }
 
-// Create an invoice when a container is retrieved
-export function markContainerRetrieved(bookingId: string): void {
-  const c = containers.find(x => x.bookingId === bookingId)
-  if (!c) return
-  c.status = 'Retrieved'
-  c.fillLevel = 1
-  c.lat = null
-  c.lon = null
-
-  syncInvoiceForRetrievedBooking(bookingId)
-
-  syncLinkedState(bookingId)
+export function markContainerRetrieved(bookingId: string): Promise<void> {
+  return request<void>(`/admin/bookings/${bookingId}/retrieved`, { method: 'POST' })
 }

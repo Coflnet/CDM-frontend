@@ -1,9 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { authState, login, register, selectRole, logout, clearSavedRole } from './store/auth'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { authState, login, register, selectRole, logout, clearSavedRole, testLogin, type UserRole } from './store/auth'
+import { meApi, type ApiTokenInfo, type CreatedApiToken } from './api'
 import CustomerDashboard from './components/customer/CustomerDashboard.vue'
 import DriverDashboard from './components/driver/DriverDashboard.vue'
 import AdminDashboard from './components/admin/AdminDashboard.vue'
+import LanguageSwitcher from './components/LanguageSwitcher.vue'
+
+const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 
 type AuthView = 'login' | 'signup'
 const authView = ref<AuthView>('login')
@@ -13,6 +21,45 @@ const passwordInput = ref('')
 const confirmPasswordInput = ref('')
 const authError = ref('')
 const authLoading = ref(false)
+const showApiTokens = ref(false)
+const apiTokens = ref<ApiTokenInfo[]>([])
+const apiTokenName = ref('')
+const createdApiToken = ref<CreatedApiToken | null>(null)
+const apiTokenError = ref('')
+const apiTokenLoading = ref(false)
+
+const availableRoles = computed<UserRole[]>(() => {
+  const roles: UserRole[] = []
+  if (authState.roles.includes('customer')) roles.push('customer')
+  if (authState.roles.includes('driver')) roles.push('driver')
+  if (authState.roles.includes('admin') || authState.roles.includes('superadmin')) roles.push('admin')
+  return roles
+})
+
+const canSwitchRoles = computed(() => availableRoles.value.length > 1)
+
+function roleTitle(role: UserRole): string {
+  if (role === 'admin') return t('roles.admin')
+  if (role === 'driver') return t('roles.driver')
+  return t('roles.customer')
+}
+
+onMounted(async () => {
+  // ?testLogin=customer|driver|admin|superadmin enables the test bypass when
+  // the backend has CDM_TESTING_ENABLED=true. Used by the C# Playwright suite.
+  const param = (route.query.testLogin || (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('testLogin') : null)) as string | null
+  if (param) {
+    try {
+      await testLogin(param as UserRole)
+    } catch (e) {
+      // Surface to the inline auth error area so the e2e suite sees something.
+      authError.value = e instanceof Error ? e.message : String(e)
+    } finally {
+      // Strip the param so a refresh doesn't re-mint a token.
+      router.replace({ path: route.path, query: { ...route.query, testLogin: undefined } })
+    }
+  }
+})
 
 function switchView(view: AuthView) {
   authView.value = view
@@ -23,33 +70,26 @@ function switchView(view: AuthView) {
 }
 
 function mapFirebaseError(e: unknown, isSignup: boolean): string {
-  // Firebase errors carry a .code like "auth/email-already-in-use"
   const code = (e as { code?: string })?.code ?? ''
   const msg = e instanceof Error ? e.message : String(e)
   const haystack = `${code} ${msg}`.toLowerCase()
 
   if (haystack.includes('invalid-credential') || haystack.includes('wrong-password') || haystack.includes('user-not-found'))
-    return 'E-Mail oder Passwort falsch.'
-  if (haystack.includes('email-already-in-use'))
-    return 'Diese E-Mail-Adresse ist bereits registriert.'
-  if (haystack.includes('invalid-email'))
-    return 'Ungültige E-Mail-Adresse.'
-  if (haystack.includes('weak-password'))
-    return 'Passwort muss mindestens 6 Zeichen lang sein.'
-  if (haystack.includes('too-many-requests'))
-    return 'Zu viele Versuche. Bitte später nochmal versuchen.'
-  if (haystack.includes('network-request-failed') || haystack.includes('network'))
-    return 'Netzwerkfehler. Bitte Verbindung prüfen.'
-  if (haystack.includes('operation-not-allowed'))
-    return 'Registrierung ist derzeit nicht aktiviert. Bitte den Administrator kontaktieren.'
-  // expose the raw code in dev so it is easy to diagnose new cases
+    return t('auth.errors.invalidCredential')
+  if (haystack.includes('email-already-in-use')) return t('auth.errors.emailInUse')
+  if (haystack.includes('invalid-email')) return t('auth.errors.invalidEmail')
+  if (haystack.includes('weak-password')) return t('auth.errors.tooShort')
+  if (haystack.includes('too-many-requests')) return t('auth.errors.tooManyRequests')
+  if (haystack.includes('network-request-failed') || haystack.includes('network')) return t('auth.errors.network')
+  if (haystack.includes('operation-not-allowed')) return t('auth.errors.registrationDisabled')
   const detail = code || msg
-  return isSignup ? `Registrierung fehlgeschlagen (${detail}).` : `Anmeldung fehlgeschlagen (${detail}).`
+  const base = isSignup ? t('auth.errors.genericSignup') : t('auth.errors.genericLogin')
+  return `${base} (${detail}).`
 }
 
 async function submitLogin() {
   if (!emailInput.value.trim() || !passwordInput.value) {
-    authError.value = 'Bitte E-Mail und Passwort eingeben.'
+    authError.value = t('auth.errors.empty')
     return
   }
   authLoading.value = true
@@ -67,15 +107,15 @@ async function submitLogin() {
 
 async function submitSignup() {
   if (!emailInput.value.trim() || !passwordInput.value) {
-    authError.value = 'Bitte E-Mail und Passwort eingeben.'
+    authError.value = t('auth.errors.empty')
     return
   }
   if (passwordInput.value !== confirmPasswordInput.value) {
-    authError.value = 'Passwörter stimmen nicht überein.'
+    authError.value = t('auth.errors.mismatch')
     return
   }
   if (passwordInput.value.length < 6) {
-    authError.value = 'Passwort muss mindestens 6 Zeichen lang sein.'
+    authError.value = t('auth.errors.tooShort')
     return
   }
   authLoading.value = true
@@ -91,6 +131,51 @@ async function submitSignup() {
     authLoading.value = false
   }
 }
+
+async function openApiTokens() {
+  showApiTokens.value = true
+  await loadApiTokens()
+}
+
+async function loadApiTokens() {
+  apiTokenLoading.value = true
+  apiTokenError.value = ''
+  try {
+    apiTokens.value = await meApi.listApiTokens()
+  } catch (e: unknown) {
+    apiTokenError.value = e instanceof Error ? e.message : t('apiTokens.loadError')
+  } finally {
+    apiTokenLoading.value = false
+  }
+}
+
+async function createApiToken() {
+  apiTokenLoading.value = true
+  apiTokenError.value = ''
+  createdApiToken.value = null
+  try {
+    createdApiToken.value = await meApi.createApiToken(apiTokenName.value.trim() || undefined)
+    apiTokenName.value = ''
+    await loadApiTokens()
+  } catch (e: unknown) {
+    apiTokenError.value = e instanceof Error ? e.message : t('apiTokens.createError')
+  } finally {
+    apiTokenLoading.value = false
+  }
+}
+
+async function revokeApiToken(tokenId: string) {
+  apiTokenLoading.value = true
+  apiTokenError.value = ''
+  try {
+    await meApi.revokeApiToken(tokenId)
+    await loadApiTokens()
+  } catch (e: unknown) {
+    apiTokenError.value = e instanceof Error ? e.message : t('apiTokens.revokeError')
+  } finally {
+    apiTokenLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -100,15 +185,46 @@ async function submitSignup() {
       <div class="loading-spinner"></div>
     </div>
 
-    <!-- Login / Signup screen -->
-    <div v-else-if="!authState.authenticated" class="role-screen">
-      <div class="role-card">
-        <div class="brand">
+    <!-- Landing + Login / Signup screen -->
+    <div v-else-if="!authState.authenticated" class="landing-screen">
+      <section class="landing-copy">
+        <div class="brand landing-brand">
           <span class="brand-diamond">&#9670;</span>
-          <span class="brand-name">CDM</span>
+          <span class="brand-name">{{ t('brand.name') }}</span>
         </div>
-        <p class="brand-sub">Container- &amp; Mulden-Management</p>
-        <p class="brand-by">von Coflnet</p>
+        <h1>{{ t('landing.headline') }}</h1>
+        <p class="landing-text">{{ t('landing.intro') }}</p>
+        <ul class="landing-bullets">
+          <li>
+            <strong>{{ t('landing.bullets.order.title') }}</strong>
+            <span>{{ t('landing.bullets.order.text') }}</span>
+          </li>
+          <li>
+            <strong>{{ t('landing.bullets.pickup.title') }}</strong>
+            <span>{{ t('landing.bullets.pickup.text') }}</span>
+          </li>
+          <li>
+            <strong>{{ t('landing.bullets.sustain.title') }}</strong>
+            <span>{{ t('landing.bullets.sustain.text') }}</span>
+          </li>
+        </ul>
+        <p class="landing-links">
+          <RouterLink to="/info" class="link-btn">{{ t('landing.cta.learnMore') }} &rarr;</RouterLink>
+          <span class="separator">·</span>
+          <RouterLink to="/info" class="link-btn">{{ t('landing.cta.forCompanies') }}</RouterLink>
+        </p>
+      </section>
+
+      <div class="role-card auth-card">
+        <div class="auth-card-top">
+          <div class="brand compact-brand">
+            <span class="brand-diamond">&#9670;</span>
+            <span class="brand-name">{{ t('brand.short') }}</span>
+          </div>
+          <LanguageSwitcher />
+        </div>
+        <p class="brand-sub">{{ t('brand.sub') }}</p>
+        <p class="brand-by">{{ t('brand.by') }}</p>
 
         <!-- Tab switcher -->
         <div class="auth-tabs">
@@ -116,12 +232,12 @@ async function submitSignup() {
             class="auth-tab"
             :class="{ active: authView === 'login' }"
             @click="switchView('login')"
-          >Anmelden</button>
+          >{{ t('auth.loginTab') }}</button>
           <button
             class="auth-tab"
             :class="{ active: authView === 'signup' }"
             @click="switchView('signup')"
-          >Registrieren</button>
+          >{{ t('auth.signupTab') }}</button>
         </div>
 
         <div v-if="authError" class="alert-inline">{{ authError }}</div>
@@ -129,74 +245,74 @@ async function submitSignup() {
         <!-- Login form -->
         <template v-if="authView === 'login'">
           <div class="form-group">
-            <label>E-Mail</label>
+            <label>{{ t('auth.email') }}</label>
             <input
               v-model="emailInput"
               type="email"
-              placeholder="name@firma.de"
+              :placeholder="t('auth.emailPh')"
               autocomplete="email"
               @keyup.enter="submitLogin"
             />
           </div>
           <div class="form-group">
-            <label>Passwort</label>
+            <label>{{ t('auth.password') }}</label>
             <input
               v-model="passwordInput"
               type="password"
-              placeholder="••••••••"
+              :placeholder="t('auth.passwordPh')"
               autocomplete="current-password"
               @keyup.enter="submitLogin"
             />
           </div>
           <button class="btn-primary btn-block mt-4" :disabled="authLoading" @click="submitLogin">
             <span v-if="authLoading" class="btn-spinner"></span>
-            <span v-else>Anmelden</span>
+            <span v-else>{{ t('auth.submitLogin') }}</span>
           </button>
           <p class="auth-switch-hint">
-            Noch kein Konto?
-            <button class="link-btn" @click="switchView('signup')">Jetzt registrieren</button>
+            {{ t('auth.noAccount') }}
+            <button class="link-btn" @click="switchView('signup')">{{ t('auth.switchToSignup') }}</button>
           </p>
         </template>
 
         <!-- Signup form -->
         <template v-else>
           <div class="form-group">
-            <label>E-Mail</label>
+            <label>{{ t('auth.email') }}</label>
             <input
               v-model="emailInput"
               type="email"
-              placeholder="name@firma.de"
+              :placeholder="t('auth.emailPh')"
               autocomplete="email"
               @keyup.enter="submitSignup"
             />
           </div>
           <div class="form-group">
-            <label>Passwort</label>
+            <label>{{ t('auth.password') }}</label>
             <input
               v-model="passwordInput"
               type="password"
-              placeholder="Mindestens 6 Zeichen"
+              :placeholder="t('auth.passwordSignupPh')"
               autocomplete="new-password"
               @keyup.enter="submitSignup"
             />
           </div>
           <div class="form-group">
-            <label>Passwort bestätigen</label>
+            <label>{{ t('auth.confirmPassword') }}</label>
             <input
               v-model="confirmPasswordInput"
               type="password"
-              placeholder="••••••••"
+              :placeholder="t('auth.passwordPh')"
               autocomplete="new-password"
               @keyup.enter="submitSignup"
             />
           </div>
           <button class="btn-primary btn-block mt-4" :disabled="authLoading" @click="submitSignup">
             <span v-if="authLoading" class="btn-spinner"></span>
-            <span v-else>Konto erstellen</span>
+            <span v-else>{{ t('auth.submitSignup') }}</span>
           </button>
           <p class="auth-switch-hint">
-            Bereits ein Konto?
-            <button class="link-btn" @click="switchView('login')">Anmelden</button>
+            {{ t('auth.haveAccount') }}
+            <button class="link-btn" @click="switchView('login')">{{ t('auth.switchToLogin') }}</button>
           </p>
         </template>
       </div>
@@ -207,40 +323,28 @@ async function submitSignup() {
       <div class="role-card">
         <div class="brand">
           <span class="brand-diamond">&#9670;</span>
-          <span class="brand-name">CDM</span>
+          <span class="brand-name">{{ t('brand.short') }}</span>
         </div>
-        <p class="brand-sub">Container- &amp; Mulden-Management</p>
-        <p class="brand-by">von Coflnet</p>
+        <p class="brand-sub">{{ t('brand.sub') }}</p>
+        <p class="brand-by">{{ t('brand.by') }}</p>
 
-        <p class="choose-label">Wer bist du?</p>
+        <p class="choose-label">{{ t('roles.noneYet') }}</p>
 
         <div class="role-options">
-          <button class="role-btn" @click="selectRole('customer')">
+          <button v-for="role in availableRoles" :key="role" class="role-btn" @click="selectRole(role)">
             <span class="role-icon">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
             </span>
-            <span class="role-title">Kunde</span>
-            <span class="role-desc">Container verwalten &amp; Abholungen planen</span>
-          </button>
-
-          <button class="role-btn" @click="selectRole('driver')">
-            <span class="role-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
-            </span>
-            <span class="role-title">Fahrer</span>
-            <span class="role-desc">Abholwarteschlange &amp; Navigation zu Standorten</span>
-          </button>
-
-          <button class="role-btn" @click="selectRole('admin')">
-            <span class="role-icon">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
-            </span>
-            <span class="role-title">Admin</span>
-            <span class="role-desc">Aufträge zuweisen, Fehlerprotokoll &amp; Rechnungen</span>
+            <span class="role-title">{{ roleTitle(role) }}</span>
+            <span class="role-desc">{{ t('roles.pickHint') }}</span>
           </button>
         </div>
 
-        <button class="btn-ghost btn-block mt-4" style="font-size:0.82rem" @click="logout">Abmelden</button>
+        <p v-if="availableRoles.length === 0" class="text-sm text-muted mt-4">
+          {{ t('roles.inactiveHint') }}
+        </p>
+
+        <button class="btn-ghost btn-block mt-4" style="font-size:0.82rem" @click="logout">{{ t('nav.logout') }}</button>
       </div>
     </div>
 
@@ -249,16 +353,53 @@ async function submitSignup() {
       <header class="app-header">
         <div class="app-header-title">
           <span class="logo-accent"></span>
-          CDM &mdash; {{ authState.role === 'driver' ? 'Fahreransicht' : authState.role === 'admin' ? 'Administration' : 'Kundenportal' }}
+          {{ t('brand.short') }} &mdash; {{ authState.role === 'driver' ? t('roles.driver') : authState.role === 'admin' ? t('roles.admin') : t('roles.customer') }}
         </div>
         <div class="header-actions">
-          <button class="btn-ghost btn-sm" @click="clearSavedRole()">Rolle</button>
-          <button class="btn-ghost btn-sm" @click="logout">Abmelden</button>
+          <LanguageSwitcher />
+          <button class="btn-ghost btn-sm" @click="openApiTokens">{{ t('nav.apiTokens') }}</button>
+          <button v-if="canSwitchRoles" class="btn-ghost btn-sm" @click="clearSavedRole()">{{ t('nav.role') }}</button>
+          <button class="btn-ghost btn-sm" @click="logout">{{ t('nav.logout') }}</button>
         </div>
       </header>
       <CustomerDashboard v-if="authState.role === 'customer'" />
       <DriverDashboard v-else-if="authState.role === 'driver'" />
       <AdminDashboard v-else-if="authState.role === 'admin'" />
+
+      <Transition name="fade">
+        <div v-if="showApiTokens" class="modal-overlay" @click.self="showApiTokens = false">
+          <div class="modal api-token-modal">
+            <div class="modal-header">
+              <h2>{{ t('apiTokens.title') }}</h2>
+              <button class="modal-close" @click="showApiTokens = false">&times;</button>
+            </div>
+
+            <div v-if="apiTokenError" class="alert alert-error mb-2">{{ apiTokenError }}</div>
+            <div v-if="createdApiToken" class="alert alert-success mb-2 token-output">
+              <span>{{ createdApiToken.token }}</span>
+            </div>
+
+            <div class="form-group">
+              <label>{{ t('apiTokens.name') }}</label>
+              <input v-model="apiTokenName" type="text" :placeholder="t('apiTokens.namePh')" />
+            </div>
+            <button class="btn-primary btn-block" :disabled="apiTokenLoading" @click="createApiToken">
+              {{ apiTokenLoading ? t('common.loading') : t('apiTokens.create') }}
+            </button>
+
+            <div class="token-list">
+              <div v-for="token in apiTokens" :key="token.tokenId" class="token-row">
+                <div>
+                  <strong>{{ token.name }}</strong>
+                  <p class="text-sm text-muted">{{ t('apiTokens.validUntil', { date: new Date(token.expiresAt).toLocaleDateString() }) }}</p>
+                </div>
+                <button v-if="!token.revokedAt" class="btn-ghost btn-sm" @click="revokeApiToken(token.tokenId)">{{ t('apiTokens.revoke') }}</button>
+                <span v-else class="badge badge-gray">{{ t('apiTokens.revoked') }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </template>
   </div>
 </template>
@@ -277,6 +418,145 @@ async function submitSignup() {
   justify-content: center;
   padding: 1rem 0.875rem;
   background: var(--bg-base);
+}
+
+.landing-screen {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.25rem 0.875rem;
+  background:
+    linear-gradient(rgba(17,17,17,0.78), rgba(17,17,17,0.9)),
+    url('/container-yard.svg') center/cover no-repeat,
+    var(--bg-base);
+}
+
+.landing-copy {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.landing-brand {
+  justify-content: flex-start;
+  margin-bottom: 1rem;
+}
+
+.compact-brand {
+  font-size: 1.65rem;
+}
+
+.landing-copy h1 {
+  max-width: 680px;
+  font-size: 2.25rem;
+  line-height: 1.05;
+  margin-bottom: 1rem;
+}
+
+.landing-text {
+  max-width: 620px;
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.landing-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  max-width: 620px;
+  margin-top: 1.25rem;
+}
+
+.landing-stats div {
+  border: 1px solid var(--border-card-light);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  background: rgba(24,24,24,0.78);
+}
+
+.landing-stats strong,
+.landing-stats span {
+  display: block;
+}
+
+.landing-stats strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.landing-stats span {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.landing-bullets {
+  list-style: none;
+  padding: 0;
+  margin: 1.25rem 0 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.55rem;
+  max-width: 620px;
+}
+
+.landing-bullets li {
+  border: 1px solid var(--border-card-light);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.8rem;
+  background: rgba(24,24,24,0.78);
+}
+
+.landing-bullets strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  margin-bottom: 0.15rem;
+}
+
+.landing-bullets span {
+  display: block;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.landing-links {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.landing-links .separator {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.auth-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.auth-card {
+  margin: 0 auto;
+}
+
+@media (min-width: 920px) {
+  .landing-screen {
+    grid-template-columns: minmax(0, 1fr) 420px;
+    padding: 2rem clamp(2rem, 5vw, 5rem);
+  }
+
+  .landing-copy h1 {
+    font-size: 3.2rem;
+  }
 }
 
 .role-card {
@@ -492,5 +772,32 @@ button:disabled {
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+}
+
+.api-token-modal {
+  text-align: left;
+}
+
+.token-output {
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.token-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  background: #181818;
 }
 </style>

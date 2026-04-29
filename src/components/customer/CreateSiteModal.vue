@@ -9,6 +9,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'created', site: Site): void 
 
 const name = ref('')
 const address = ref('')
+const zipCode = ref('')
 const orientationNote = ref('')
 const error = ref('')
 const loading = ref(false)
@@ -16,12 +17,14 @@ const loading = ref(false)
 async function save() {
   if (!name.value.trim()) { error.value = 'Standortname ist erforderlich.'; return }
   if (!address.value.trim()) { error.value = 'Adresse ist erforderlich.'; return }
+  if (!zipCode.value.trim()) { error.value = 'Postleitzahl ist erforderlich.'; return }
   error.value = ''
   loading.value = true
   try {
     const site = await sitesApi.create({
       name: name.value.trim(),
       address: address.value.trim(),
+      zipCode: zipCode.value.trim(),
       lat: 0,
       lon: 0,
       orientationNote: orientationNote.value.trim() || undefined,
@@ -52,6 +55,10 @@ async function save() {
       <div class="form-group">
         <label>Adresse</label>
         <input v-model="address" type="text" placeholder="Musterstraße 1, Stadt, Bundesland" />
+      </div>
+      <div class="form-group">
+        <label>Postleitzahl</label>
+        <input v-model="zipCode" type="text" inputmode="numeric" placeholder="84513" />
       </div>
       <div class="form-group">
         <label>Hinweis für Fahrer (optional)</label>
