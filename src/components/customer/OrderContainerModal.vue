@@ -96,11 +96,7 @@ const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = reco
 function buildNotes(): string | undefined {
   const variant = selectedVariant.value
   const tag = variant ? `[Container: ${variant.label}]` : ''
-  co  containerVariantId: containerVariantId.value,
-      placementPhotoKey: placementPhotoKey.value || undefined,
-      permitNumber: showPermit.value && permitNumber.value ? permitNumber.value : undefined,
-      permitExpiresAt: showPermit.value && permitExpiresAt.value ? new Date(permitExpiresAt.value).toISOString() : undefined,
-    nst free = notes.value.trim()
+  const free = notes.value.trim()
   const combined = [tag, free].filter(Boolean).join('\n')
   return combined ? combined : undefined
 }
@@ -137,6 +133,10 @@ async function save() {
       wasteTypes: [wasteType.value],
       requestedDeliveryAt: preferredDate.value ? new Date(preferredDate.value).toISOString() : undefined,
       notes: buildNotes(),
+      containerVariantId: containerVariantId.value,
+      placementPhotoKey: placementPhotoKey.value || undefined,
+      permitNumber: showPermit.value && permitNumber.value ? permitNumber.value : undefined,
+      permitExpiresAt: showPermit.value && permitExpiresAt.value ? new Date(permitExpiresAt.value).toISOString() : undefined,
     })
 
     emit('ordered')
