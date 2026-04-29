@@ -1,7 +1,12 @@
-FROM node:22-alpine AS build
+FROM node:22-bookworm-slim AS build
 WORKDIR /src
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# Vite 8 / rolldown ships per-platform native bindings as `optionalDependencies`.
+# `npm ci` on alpine (musl) hits npm/cli#4828 and skips the right binding,
+# producing a dist/ that crashes at startup (blank page in the browser).
+# Using a glibc-based image plus an explicit --include=optional makes the
+# build deterministic across CI and local runs.
+RUN npm ci --no-audit --no-fund --include=optional
 COPY . .
 ENV NODE_ENV=production
 ENV VITE_API_BASE_URL=https://cdm.coflnet.com \
