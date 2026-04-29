@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { sitesApi } from '../../api'
 import type { Site, WasteType } from '../../api'
 import { useVideoRecorder } from '../../composables/useVideoRecorder'
-import { WASTE_TYPE_LABEL } from '../../utils'
+import { LEITL_CONTAINERS, WASTE_TYPE_LABEL, suggestContainerVariants } from '../../utils'
 import { useBodyLock } from '../../composables/useBodyLock'
 useBodyLock()
 
@@ -13,6 +13,7 @@ const emit = defineEmits<{ (e: 'close'): void; (e: 'ordered'): void }>()
 const NEW_SITE_ID = '__new'
 const siteId = ref(props.sites[0]?.siteId ?? NEW_SITE_ID)
 const wasteType = ref<WasteType>('Mixed')
+const containerVariantId = ref<string>('absetz-7-offen')
 const notes = ref('')
 const preferredDate = ref('')
 const newSiteName = ref('')
@@ -23,9 +24,31 @@ const loading = ref(false)
 
 const wasteTypes: WasteType[] = ['Mixed', 'Wood', 'Metal', 'Concrete', 'Paper', 'Plastic', 'Organic', 'Electronics']
 
+const suggestedVariants = computed(() => suggestContainerVariants(wasteType.value))
+const selectedVariant = computed(() =>
+  LEITL_CONTAINERS.find(c => c.id === containerVariantId.value) ?? LEITL_CONTAINERS[0],
+)
+
+// When the customer changes the waste type, default to the first suggested
+// variant if the current one is not in the suggestion list.
+watch(wasteType, (next) => {
+  const recommended = suggestContainerVariants(next)
+  if (!recommended.some(v => v.id === containerVariantId.value)) {
+    containerVariantId.value = recommended[0]?.id ?? containerVariantId.value
+  }
+})
+
 const recorder = useVideoRecorder()
 const { step, recording, videoBlob, videoPreviewUrl, stream } = recorder
 const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = recorder
+
+function buildNotes(): string | undefined {
+  const variant = selectedVariant.value
+  const tag = variant ? `[Container: ${variant.label}]` : ''
+  const free = notes.value.trim()
+  const combined = [tag, free].filter(Boolean).join('\n')
+  return combined ? combined : undefined
+}
 
 async function save() {
   if (!videoBlob.value) { error.value = 'Bitte nimm vor der Bestellung ein Einfahrtsvideo auf.'; return }
@@ -58,7 +81,7 @@ async function save() {
     await sitesApi.createOrder(siteId.value, {
       wasteTypes: [wasteType.value],
       requestedDeliveryAt: preferredDate.value ? new Date(preferredDate.value).toISOString() : undefined,
-      notes: notes.value || undefined,
+      notes: buildNotes(),
     })
 
     emit('ordered')
@@ -108,6 +131,58 @@ async function save() {
           <select v-model="wasteType">
             <option v-for="t in wasteTypes" :key="t" :value="t">{{ WASTE_TYPE_LABEL[t] }}</option>
           </select>
+        </div>
+
+        <div class="form-group">
+          <label>Container auswählen</label>
+          <p class="text-sm text-muted mb-2">
+            Empfehlungen für {{ WASTE_TYPE_LABEL[wasteType] }} – passend zum Containerservice von Leitl Recycling.
+          </p>
+          <div class="variant-grid">
+            <label
+              v-for="v in suggestedVariants"
+              :key="v.id"
+              class="variant-card"
+              :class="{ active: containerVariantId === v.id }"
+            >
+              <input type="radio" :value="v.id" v-model="containerVariantId" class="variant-radio" />
+              <svg
+                class="variant-icon"
+                viewBox="0 0 80 50"
+                xmlns="http://www.w3.org/2000/svg"
+                aria-hidden="true"
+              >
+                <!-- Absetzcontainer (trapezoid) vs Abrollcontainer (rectangle) -->
+                <template v-if="v.kind === 'Absetz'">
+                  <polygon points="8,40 18,18 62,18 72,40" fill="#fb923c" stroke="#9a3412" stroke-width="1.5" />
+                  <line x1="8" y1="40" x2="72" y2="40" stroke="#9a3412" stroke-width="1.5" />
+                  <circle cx="20" cy="42" r="3" fill="#1f2937" />
+                  <circle cx="60" cy="42" r="3" fill="#1f2937" />
+                </template>
+                <template v-else>
+                  <rect x="6" y="14" width="68" height="26" fill="#0ea5e9" stroke="#075985" stroke-width="1.5" />
+                  <line x1="6" y1="40" x2="74" y2="40" stroke="#075985" stroke-width="1.5" />
+                  <circle cx="16" cy="42" r="3" fill="#1f2937" />
+                  <circle cx="40" cy="42" r="3" fill="#1f2937" />
+                  <circle cx="64" cy="42" r="3" fill="#1f2937" />
+                </template>
+                <!-- Lid indicator -->
+                <line v-if="v.hasLid" x1="14" y1="14" x2="66" y2="14" stroke="#1f2937" stroke-width="2" stroke-linecap="round" />
+              </svg>
+              <div class="variant-body">
+                <div class="variant-title">{{ v.label }}</div>
+                <div class="variant-meta">
+                  <span class="badge badge-blue">{{ v.volumeM3 }} m³</span>
+                  <span v-if="v.hasLid" class="badge badge-green">Mit Deckel</span>
+                  <span v-else class="badge badge-gray">Offen</span>
+                </div>
+                <div class="variant-foot text-muted">{{ v.footprint }}</div>
+              </div>
+            </label>
+          </div>
+          <p v-if="selectedVariant" class="text-sm text-muted variant-desc">
+            {{ selectedVariant.description }}
+          </p>
         </div>
         <div class="form-group">
           <label>Gewünschtes Lieferdatum (optional)</label>
@@ -218,6 +293,43 @@ async function save() {
   border-radius: 4px;
   letter-spacing: 0.05em;
 }
+
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.5rem;
+}
+.variant-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  background: var(--bs-body-bg, transparent);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.variant-card:hover { border-color: var(--bs-primary, #0d6efd); }
+.variant-card.active {
+  border-color: var(--bs-primary, #0d6efd);
+  box-shadow: 0 0 0 2px rgba(13, 110, 253, 0.25);
+}
+.variant-radio {
+  position: absolute; top: 0.4rem; right: 0.4rem;
+  margin: 0;
+}
+.variant-icon { flex: 0 0 60px; height: 38px; }
+.variant-body { flex: 1; min-width: 0; }
+.variant-title { font-weight: 600; font-size: 0.9rem; line-height: 1.2; }
+.variant-meta {
+  display: flex; flex-wrap: wrap; gap: 0.25rem;
+  margin-top: 0.25rem;
+}
+.variant-meta .badge { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
+.variant-foot { font-size: 0.7rem; margin-top: 0.2rem; }
+.variant-desc { margin-top: 0.5rem; }
 .mt-2 { margin-top: 0.75rem; }
 .mt-3 { margin-top: 1.25rem; }
 </style>

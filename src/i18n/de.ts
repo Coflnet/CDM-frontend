@@ -114,6 +114,11 @@ export default {
           'Stop-Liste auf dem Tablet, Fotos und Unterschrift direkt im Auftrag, automatische Wiegungsmeldung an die Disposition. Funktioniert auch bei schlechter Netzabdeckung.',
       },
     },
+    containers: {
+      title: 'Welche Container gibt es?',
+      body:
+        'Vom 3 m³ Mini-Absetzcontainer für schweren Bauschutt bis zum 36 m³ Abrollcontainer für Sperrmüll oder Folien – das Sortiment deckt typische Bau- und Entrümpelungsprojekte ab. Variante mit Deckel, wenn Inhalt vor Regen geschützt werden soll.',
+    },
     forCompanies: {
       title: 'Sie sind ein anderer Containerdienst?',
       body:

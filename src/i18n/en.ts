@@ -114,6 +114,11 @@ export default {
           'Stop list on the tablet, photos and signature attached to the job, automatic weight notification to dispatch. Works even on patchy mobile coverage.',
       },
     },
+    containers: {
+      title: 'Which containers are available?',
+      body:
+        'From the 3 m³ skip for heavy rubble up to the 36 m³ roll-off for bulky waste or foil – the line-up covers typical construction and clear-out jobs. Pick a lidded variant when the content should be kept dry or out of sight.',
+    },
     forCompanies: {
       title: 'Run a different container service?',
       body:
