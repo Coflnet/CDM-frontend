@@ -5,6 +5,7 @@ import type { DriverTrip, Anfahrt } from '../../api'
 import { formatDateTime, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL, TRIP_KIND_LABEL } from '../../utils'
 import DrivewayVideoModal from './DrivewaVideoModal.vue'
 import TripReportModal from './TripReportModal.vue'
+import { useDispatchVideoCache } from '../../composables/useDispatchVideoCache'
 
 const trips = ref<DriverTrip[]>([])
 const loading = ref(true)
@@ -25,6 +26,17 @@ async function load() {
     results.forEach((r, i) => {
       if (r.status === 'fulfilled') anfahrtenMap.value[siteIds[i]] = r.value
     })
+
+    // When on Wi-Fi, opportunistically pre-cache the next 2 dispatch videos
+    // for the queue trips so the driver can play them instantly even when
+    // they later drop to mobile / no signal en route.
+    const cache = useDispatchVideoCache()
+    const upcoming = trips.value.slice(0, 2)
+    for (const t of upcoming) {
+      const list = anfahrtenMap.value[t.siteId] ?? []
+      if (list.length > 0) await cache.preloadNext(t.siteId, list, 1)
+    }
+    cache.trimCache(6)
   } finally {
     loading.value = false
   }

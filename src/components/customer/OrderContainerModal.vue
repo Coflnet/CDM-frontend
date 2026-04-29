@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { sitesApi } from '../../api'
+import { sitesApi, customerExtrasApi } from '../../api'
 import type { Site, WasteType } from '../../api'
 import { useVideoRecorder } from '../../composables/useVideoRecorder'
 import { LEITL_CONTAINERS, WASTE_TYPE_LABEL, suggestContainerVariants } from '../../utils'
@@ -22,6 +22,20 @@ const newSiteZip = ref('')
 const error = ref('')
 const loading = ref(false)
 
+// Feature 1 — pricing transparency
+const priceCents = ref<number | null>(null)
+const priceCurrency = ref<string>('EUR')
+const priceLoading = ref(false)
+
+// Feature 2 — optional placement-spot photo
+const placementPhoto = ref<File | null>(null)
+const placementPhotoKey = ref<string>('')
+
+// Feature 7 — optional Stellgenehmigung tracker
+const showPermit = ref(false)
+const permitNumber = ref('')
+const permitExpiresAt = ref('')
+
 const wasteTypes: WasteType[] = ['Mixed', 'Wood', 'Metal', 'Concrete', 'Paper', 'Plastic', 'Organic', 'Electronics']
 
 const suggestedVariants = computed(() => suggestContainerVariants(wasteType.value))
@@ -38,6 +52,43 @@ watch(wasteType, (next) => {
   }
 })
 
+async function refreshPrice() {
+  priceLoading.value = true
+  try {
+    const quote = await customerExtrasApi.getPrice(containerVariantId.value, wasteType.value)
+    priceCents.value = quote.priceCents
+    priceCurrency.value = quote.currency || 'EUR'
+  } catch {
+    priceCents.value = null
+  } finally {
+    priceLoading.value = false
+  }
+}
+watch([wasteType, containerVariantId], refreshPrice, { immediate: true })
+
+const formattedPrice = computed(() => {
+  if (priceCents.value == null) return ''
+  try {
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: priceCurrency.value }).format(priceCents.value / 100)
+  } catch {
+    return `${(priceCents.value / 100).toFixed(2)} ${priceCurrency.value}`
+  }
+})
+
+async function onPlacementPhoto(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  placementPhoto.value = file
+  try {
+    const res = await customerExtrasApi.uploadPlacementPhoto(file)
+    placementPhotoKey.value = res.storageKey
+  } catch (err) {
+    error.value = err instanceof Error ? err.message : 'Foto-Upload fehlgeschlagen'
+    placementPhoto.value = null
+  }
+}
+
 const recorder = useVideoRecorder()
 const { step, recording, videoBlob, videoPreviewUrl, stream } = recorder
 const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = recorder
@@ -45,7 +96,11 @@ const { openCamera, startRecording, stopRecording, stopCamera, rerecord } = reco
 function buildNotes(): string | undefined {
   const variant = selectedVariant.value
   const tag = variant ? `[Container: ${variant.label}]` : ''
-  const free = notes.value.trim()
+  co  containerVariantId: containerVariantId.value,
+      placementPhotoKey: placementPhotoKey.value || undefined,
+      permitNumber: showPermit.value && permitNumber.value ? permitNumber.value : undefined,
+      permitExpiresAt: showPermit.value && permitExpiresAt.value ? new Date(permitExpiresAt.value).toISOString() : undefined,
+    nst free = notes.value.trim()
   const combined = [tag, free].filter(Boolean).join('\n')
   return combined ? combined : undefined
 }
@@ -183,11 +238,38 @@ async function save() {
           <p v-if="selectedVariant" class="text-sm text-muted variant-desc">
             {{ selectedVariant.description }}
           </p>
+          <div v-if="formattedPrice" class="alert alert-info mt-2 d-flex justify-content-between align-items-center">
+            <span>Indikativer Preis</span>
+            <strong>{{ formattedPrice }}</strong>
+          </div>
+          <p v-if="priceLoading" class="text-sm text-muted">Preis wird berechnet…</p>
         </div>
         <div class="form-group">
           <label>Gewünschtes Lieferdatum (optional)</label>
           <input type="datetime-local" v-model="preferredDate" />
         </div>
+
+        <div class="form-group">
+          <label>Foto vom Stellplatz (optional)</label>
+          <input type="file" accept="image/*" capture="environment" @change="onPlacementPhoto" />
+          <p class="text-sm text-muted mt-1">
+            Hilft dem Fahrer, den richtigen Platz beim ersten Versuch zu finden.
+          </p>
+          <p v-if="placementPhotoKey" class="text-success small">Foto hochgeladen ✓</p>
+        </div>
+
+        <div class="form-group">
+          <label class="d-flex align-items-center" style="gap:0.5rem">
+            <input type="checkbox" v-model="showPermit" />
+            Stellgenehmigung vorhanden (öffentlicher Grund)
+          </label>
+          <div v-if="showPermit" class="permit-fields mt-2">
+            <input v-model="permitNumber" type="text" placeholder="Genehmigungsnummer" class="mb-2" />
+            <label class="text-sm text-muted">Gültig bis</label>
+            <input v-model="permitExpiresAt" type="datetime-local" />
+          </div>
+        </div>
+
         <div class="form-group">
           <label>Hinweise</label>
           <textarea v-model="notes" rows="2" placeholder="Besondere Anweisungen..."></textarea>

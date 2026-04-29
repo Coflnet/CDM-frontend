@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { CustomerContainerView, Site } from '../../api'
-import { fillColor, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
+import { customerExtrasApi } from '../../api'
+import { fillColor, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL, isHazardousWasteType } from '../../utils'
 
 const props = defineProps<{
   container: CustomerContainerView
@@ -12,6 +13,7 @@ const emit = defineEmits<{
   (e: 'schedule-pickup'): void
   (e: 'update-fill'): void
   (e: 'view-detail'): void
+  (e: 'swap'): void
 }>()
 
 const fillPct = computed(() => Math.round(props.container.fillLevel * 100))
@@ -22,6 +24,22 @@ const pickupSoon = computed(() => {
   const diff = new Date(props.container.expectedEmptyingAt).getTime() - Date.now()
   return diff > 0 && diff < 1000 * 60 * 60 * 24 * 2
 })
+
+const isHazardous = computed(() => isHazardousWasteType(props.container.wasteType))
+const swapping = ref(false)
+
+async function doSwap() {
+  if (!confirm('Container tauschen? Der bestehende wird abgeholt und ein gleichartiger neu geliefert.')) return
+  swapping.value = true
+  try {
+    await customerExtrasApi.swapBooking(props.container.bookingId, {})
+    emit('swap')
+  } catch (e) {
+    alert(e instanceof Error ? e.message : 'Tausch fehlgeschlagen')
+  } finally {
+    swapping.value = false
+  }
+}
 </script>
 
 <template>
@@ -57,6 +75,9 @@ const pickupSoon = computed(() => {
       <button class="btn-primary btn-sm" @click="emit('schedule-pickup')">Abholung planen</button>
       <button class="btn-ghost btn-sm" @click="emit('update-fill')">Füllstand</button>
       <button class="btn-ghost btn-sm" @click="emit('view-detail')">Details</button>
+      <button class="btn-ghost btn-sm" @click="doSwap" :disabled="swapping">{{ swapping ? '…' : 'Tauschen' }}</button>
+      <a class="btn-ghost btn-sm" :href="customerExtrasApi.co2CertificateUrl(container.bookingId)" target="_blank" rel="noopener">CO₂-Zertifikat</a>
+      <a v-if="isHazardous" class="btn-ghost btn-sm" :href="customerExtrasApi.abfallnachweisUrl(container.bookingId)" target="_blank" rel="noopener">Abfallnachweis</a>
     </div>
   </div>
 </template>

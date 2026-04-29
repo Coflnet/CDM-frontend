@@ -128,6 +128,13 @@ export function effectiveMaxFill(wasteType: WasteType): number {
   return HEAVY_WASTE_TYPES.includes(wasteType) ? 25 : 100
 }
 
+// Mirror of HazardousWaste.IsHazardous on the backend. Used to decide
+// whether a booking is eligible for the Abfallnachweis-Light PDF.
+export const HAZARDOUS_WASTE_TYPES: WasteType[] = ['Electronics']
+export function isHazardousWasteType(wasteType: WasteType): boolean {
+  return HAZARDOUS_WASTE_TYPES.includes(wasteType)
+}
+
 export function fillColor(pct: number): string {
   if (pct >= 80) return '#e74c3c'
   if (pct >= 50) return '#e67e22'

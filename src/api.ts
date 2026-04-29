@@ -473,7 +473,19 @@ export const sitesApi = {
     return request<BookingBySite[]>(`/my/sites/${siteId}/containers`)
   },
 
-  async createOrder(siteId: string, body: { wasteTypes: WasteType[]; requestedDeliveryAt?: string; notes?: string }): Promise<Order> {
+  async createOrder(
+    siteId: string,
+    body: {
+      wasteTypes: WasteType[]
+      requestedDeliveryAt?: string
+      notes?: string
+      containerVariantId?: string
+      placementPhotoKey?: string
+      permitNumber?: string
+      permitExpiresAt?: string
+      permitPhotoKey?: string
+    }
+  ): Promise<Order> {
     return normalizeOrder(await request<any>(`/my/sites/${siteId}/orders`, {
       method: 'POST',
       body: JSON.stringify(body),
@@ -627,4 +639,61 @@ export const invoiceApi = {
 
 export function markContainerRetrieved(bookingId: string): Promise<void> {
   return request<void>(`/admin/bookings/${bookingId}/retrieved`, { method: 'POST' })
+}
+
+export interface PriceQuote {
+  variantId: string
+  wasteType: WasteType
+  priceCents: number
+  currency: string
+}
+
+export const customerExtrasApi = {
+  async getPrice(variantId: string, wasteType: WasteType): Promise<PriceQuote> {
+    return request<PriceQuote>(`/my/pricing?variantId=${encodeURIComponent(variantId)}&wasteType=${encodeURIComponent(wasteType)}`)
+  },
+
+  async uploadPlacementPhoto(file: File): Promise<{ storageKey: string }> {
+    const fd = new FormData()
+    fd.append('photo', file)
+    return request<{ storageKey: string }>('/my/uploads/placement-photo', { method: 'POST', body: fd })
+  },
+
+  async uploadPermitPhoto(orderId: string, file: File): Promise<{ storageKey: string; orderId: string }> {
+    const fd = new FormData()
+    fd.append('photo', file)
+    return request<any>(`/my/orders/${orderId}/permit-photo`, { method: 'POST', body: fd })
+  },
+
+  async updatePermit(orderId: string, body: { permitNumber?: string; permitExpiresAt?: string; permitPhotoKey?: string }): Promise<Order> {
+    return normalizeOrder(await request<any>(`/my/orders/${orderId}/permit`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }))
+  },
+
+  async swapBooking(bookingId: string, body: { containerVariantId?: string; requestedDeliveryAt?: string; notes?: string }): Promise<{ pickupBookingId: string; deliveryOrderId: string; deliveryBookingIds: string[] }> {
+    return request<any>(`/my/bookings/${bookingId}/swap`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })
+  },
+
+  async signDelivery(bookingId: string, signatureBlob: Blob, signerPrintedName: string, geo?: { lat: number; lon: number }): Promise<void> {
+    const fd = new FormData()
+    fd.append('signature', signatureBlob, 'signature.png')
+    fd.append('signerPrintedName', signerPrintedName)
+    if (geo) { fd.append('geoLat', String(geo.lat)); fd.append('geoLon', String(geo.lon)) }
+    await request<any>(`/my/bookings/${bookingId}/delivery-signature`, { method: 'POST', body: fd })
+  },
+
+  co2CertificateUrl(bookingId: string, weightKg?: number): string {
+    const q = weightKg ? `?weightKg=${weightKg}` : ''
+    return apiPath(`/my/bookings/${bookingId}/co2-certificate${q}`)
+  },
+
+  abfallnachweisUrl(bookingId: string, weightKg?: number): string {
+    const q = weightKg ? `?weightKg=${weightKg}` : ''
+    return apiPath(`/my/bookings/${bookingId}/abfallnachweis${q}`)
+  },
 }

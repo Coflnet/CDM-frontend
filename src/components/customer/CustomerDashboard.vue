@@ -133,6 +133,7 @@ async function loadInvoices() {
                   @schedule-pickup="scheduleTarget = { container: c, site: siteForContainer(c)! }"
                   @update-fill="fillTarget = c"
                   @view-detail="openDetail(c, siteForContainer(c)!)"
+                  @swap="load()"
                 />
               </template>
             </div>
