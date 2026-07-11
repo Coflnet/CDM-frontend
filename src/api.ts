@@ -230,14 +230,24 @@ function apiPath(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers)
+export function apiUrl(path: string): string {
+  return apiPath(path)
+}
+
+export function buildAuthHeaders(init?: HeadersInit): Headers {
+  const headers = new Headers(init)
   const token = localStorage.getItem('cdm_token')
-  if (token) {
-    // CDM API tokens use a custom header; Firebase ID tokens go through Authorization.
-    if (token.startsWith('cdm_')) headers.set('X-CDM-API-Token', token)
-    else headers.set('Authorization', `Bearer ${token}`)
-  }
+  if (!token) return headers
+
+  // CDM API tokens use a custom header; Firebase ID tokens go through Authorization.
+  if (token.startsWith('cdm_')) headers.set('X-CDM-API-Token', token)
+  else headers.set('Authorization', `Bearer ${token}`)
+
+  return headers
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = buildAuthHeaders(init.headers)
   if (init.body && !(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { adminApi, invoiceApi, markContainerRetrieved } from '../../api'
 import type { Order, Invoice, ErrorLog, Driver, Site, CustomerContainerView, DriverReport, ContainerCompany } from '../../api'
 import { WASTE_TYPE_LABEL, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, formatDate, formatDateTime } from '../../utils'
 import WeightUploadModal from './WeightUploadModal.vue'
 import TripReportCard from '../shared/TripReportCard.vue'
+import { useLiveUpdates, type LiveUpdateMessage } from '../../composables/useLiveUpdates'
 
 const activeTab = ref<'orders' | 'containers' | 'invoices' | 'logs' | 'companies'>('orders')
 
@@ -27,6 +28,7 @@ const assignCompanyId = ref('')
 const assignEmail = ref('')
 const assignRole = ref<'admin' | 'driver'>('driver')
 const companyMessage = ref('')
+const liveConnected = ref(false)
 
 async function load() {
   loading.value = true
@@ -56,7 +58,94 @@ async function load() {
   }
 }
 
-onMounted(load)
+let refreshTimer: number | null = null
+
+function scheduleRefresh() {
+  if (refreshTimer !== null) return
+  refreshTimer = window.setTimeout(async () => {
+    refreshTimer = null
+    await load()
+  }, 500)
+}
+
+type LiveContainerData = {
+  bookingId?: string
+  fillLevel?: number
+  lat?: number | null
+  lon?: number | null
+}
+
+function patchContainerFromLive(data: LiveContainerData, kind: 'fill' | 'location'): boolean {
+  if (!data.bookingId) return false
+  const idx = allContainers.value.findIndex(c => c.bookingId === data.bookingId)
+  if (idx < 0) return false
+
+  const current = allContainers.value[idx]
+  allContainers.value[idx] = {
+    ...current,
+    fillLevel: kind === 'fill' && typeof data.fillLevel === 'number' ? data.fillLevel : current.fillLevel,
+    lat: kind === 'location' ? (data.lat ?? null) : current.lat,
+    lon: kind === 'location' ? (data.lon ?? null) : current.lon,
+  }
+  return true
+}
+
+function handleLiveUpdate(message: LiveUpdateMessage) {
+  const payload = (message.data ?? {}) as Record<string, unknown>
+
+  if (message.type === 'container.fill_updated') {
+    const patched = patchContainerFromLive({
+      bookingId: typeof payload.bookingId === 'string' ? payload.bookingId : undefined,
+      fillLevel: typeof payload.fillLevel === 'number' ? payload.fillLevel : undefined,
+    }, 'fill')
+    if (!patched) scheduleRefresh()
+    return
+  }
+
+  if (message.type === 'container.location_updated') {
+    const patched = patchContainerFromLive({
+      bookingId: typeof payload.bookingId === 'string' ? payload.bookingId : undefined,
+      lat: typeof payload.lat === 'number' ? payload.lat : null,
+      lon: typeof payload.lon === 'number' ? payload.lon : null,
+    }, 'location')
+    if (!patched) scheduleRefresh()
+    return
+  }
+
+  const relevant = new Set([
+    'dispatch.updated',
+    'booking.created',
+    'booking.scheduled',
+    'booking.delivered',
+    'booking.empty_requested',
+    'booking.retrieved',
+    'container.status_changed',
+    'invoice.issued',
+    'retrieval.ready',
+    'delivery.signed',
+    'certificate.generated',
+  ])
+  if (relevant.has(message.type)) scheduleRefresh()
+}
+
+const live = useLiveUpdates({
+  onMessage: handleLiveUpdate,
+  onOpen: () => { liveConnected.value = true },
+  onClose: () => { liveConnected.value = false },
+})
+
+onMounted(() => {
+  load()
+  live.start()
+})
+
+onUnmounted(() => {
+  live.stop()
+  if (refreshTimer !== null) {
+    window.clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+})
 
 function siteName(siteId: string): string {
   return allSites.value.find(s => s.siteId === siteId)?.name ?? siteId
@@ -152,6 +241,9 @@ function logLevelClass(level: ErrorLog['level']) {
             <h1 class="admin-title">Administration</h1>
             <p class="text-sm text-muted">Coflnet CDM</p>
           </div>
+          <span class="live-pill" :class="liveConnected ? 'live-pill-on' : 'live-pill-off'">
+            {{ liveConnected ? 'Live' : 'Offline' }}
+          </span>
         </div>
 
         <!-- Summary chips -->
@@ -433,6 +525,25 @@ function logLevelClass(level: ErrorLog['level']) {
 .chip-warn { border-color: rgba(230,126,34,0.4); }
 .chip-val { font-size: 1.3rem; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
 .chip-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
+.live-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.28rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.live-pill-on {
+  color: #8ef2b3;
+  border-color: rgba(142, 242, 179, 0.4);
+  background: rgba(17, 92, 49, 0.35);
+}
+.live-pill-off {
+  color: #ffd2d2;
+  border-color: rgba(255, 120, 120, 0.4);
+  background: rgba(121, 35, 35, 0.35);
+}
 .card-title-wrap { min-width: 0; flex: 1; overflow: hidden; }
 .card-h3 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge-shrink { flex-shrink: 0; }

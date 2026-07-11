@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { driverApi, sitesApi } from '../../api'
 import type { DriverTrip, Anfahrt } from '../../api'
 import { formatDateTime, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL, TRIP_KIND_LABEL } from '../../utils'
 import DrivewayVideoModal from './DrivewaVideoModal.vue'
 import TripReportModal from './TripReportModal.vue'
 import { useDispatchVideoCache } from '../../composables/useDispatchVideoCache'
+import { useLiveUpdates, type LiveUpdateMessage } from '../../composables/useLiveUpdates'
 
 const trips = ref<DriverTrip[]>([])
 const loading = ref(true)
@@ -14,6 +15,7 @@ const videoModal = ref<{ url: string; siteName: string } | null>(null)
 const anfahrtenMap = ref<Record<string, Anfahrt[]>>({})
 const notificationBanner = ref<{ tone: 'info' | 'error'; message: string } | null>(null)
 const reportTarget = ref<DriverTrip | null>(null)
+const liveConnected = ref(false)
 
 async function load() {
   loading.value = true
@@ -42,7 +44,48 @@ async function load() {
   }
 }
 
-onMounted(load)
+let refreshTimer: number | null = null
+
+function scheduleRefresh() {
+  if (refreshTimer !== null) return
+  refreshTimer = window.setTimeout(async () => {
+    refreshTimer = null
+    await load()
+  }, 500)
+}
+
+function handleLiveUpdate(message: LiveUpdateMessage) {
+  const relevant = new Set([
+    'dispatch.updated',
+    'booking.scheduled',
+    'booking.delivered',
+    'booking.retrieved',
+    'booking.empty_requested',
+    'container.fill_updated',
+    'container.location_updated',
+    'container.status_changed',
+  ])
+  if (relevant.has(message.type)) scheduleRefresh()
+}
+
+const live = useLiveUpdates({
+  onMessage: handleLiveUpdate,
+  onOpen: () => { liveConnected.value = true },
+  onClose: () => { liveConnected.value = false },
+})
+
+onMounted(() => {
+  load()
+  live.start()
+})
+
+onUnmounted(() => {
+  live.stop()
+  if (refreshTimer !== null) {
+    window.clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+})
 
 const queueTrips = computed(() =>
   Array.from(
@@ -207,9 +250,14 @@ function openVideo(t: DriverTrip): void {
             <h1>Fahrerwarteschlange</h1>
             <p class="text-sm text-muted">Fahrer</p>
           </div>
-          <div class="stat-chip">
-            <span class="chip-val">{{ queueTrips.length }}</span>
-            <span class="chip-label">Aufträge</span>
+          <div class="row" style="gap:0.5rem;align-items:center">
+            <span class="live-pill" :class="liveConnected ? 'live-pill-on' : 'live-pill-off'">
+              {{ liveConnected ? 'Live' : 'Offline' }}
+            </span>
+            <div class="stat-chip">
+              <span class="chip-val">{{ queueTrips.length }}</span>
+              <span class="chip-label">Aufträge</span>
+            </div>
           </div>
         </div>
 
@@ -336,6 +384,25 @@ function openVideo(t: DriverTrip): void {
 }
 .chip-val { font-size: 1.3rem; font-weight: 700; color: var(--text-primary); line-height: 1.1; }
 .chip-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); font-weight: 600; }
+.live-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.28rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.live-pill-on {
+  color: #8ef2b3;
+  border-color: rgba(142, 242, 179, 0.4);
+  background: rgba(17, 92, 49, 0.35);
+}
+.live-pill-off {
+  color: #ffd2d2;
+  border-color: rgba(255, 120, 120, 0.4);
+  background: rgba(121, 35, 35, 0.35);
+}
 .tabs { gap: 0.5rem; background: #181818; border-radius: var(--radius-sm); padding: 0.3rem; }
 .tab {
   flex: 1; padding: 0.45rem 0.75rem;

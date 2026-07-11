@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { sitesApi, containersApi, invoiceApi, ordersApi } from '../../api'
 import type { Site, CustomerContainerView, Invoice, Order } from '../../api'
 import { fillColor, formatDateTime, formatDate, BOOKING_STATUS_LABEL, BOOKING_STATUS_BADGE, WASTE_TYPE_LABEL } from '../../utils'
+import { useLiveUpdates, type LiveUpdateMessage } from '../../composables/useLiveUpdates'
 import ContainerCard from './ContainerCard.vue'
 import ContainerDetailModal from './ContainerDetailModal.vue'
 import SchedulePickupModal from './SchedulePickupModal.vue'
@@ -23,6 +24,7 @@ const scheduleTarget = ref<{ container: CustomerContainerView; site: Site } | nu
 const fillTarget = ref<CustomerContainerView | null>(null)
 const showOrder = ref(false)
 const showCreateSite = ref(false)
+const liveConnected = ref(false)
 
 async function load() {
   loading.value = true
@@ -45,8 +47,6 @@ async function load() {
     loading.value = false
   }
 }
-
-onMounted(() => { load(); loadInvoices() })
 
 function siteForContainer(c: CustomerContainerView): Site | undefined {
   return sites.value.find(s => s.siteId === c.siteId)
@@ -86,9 +86,104 @@ const customerReports = computed(() =>
     .sort((left, right) => new Date(right.report.createdAt).getTime() - new Date(left.report.createdAt).getTime())
 )
 
+let refreshTimer: number | null = null
+
+function scheduleRefresh(includeInvoices = false) {
+  if (refreshTimer !== null) return
+  refreshTimer = window.setTimeout(async () => {
+    refreshTimer = null
+    await load()
+    if (includeInvoices) await loadInvoices()
+  }, 500)
+}
+
+type LiveContainerData = {
+  bookingId?: string
+  fillLevel?: number
+  lat?: number | null
+  lon?: number | null
+}
+
+function patchContainerFromLive(data: LiveContainerData, kind: 'fill' | 'location'): boolean {
+  if (!data.bookingId) return false
+  const idx = containers.value.findIndex(c => c.bookingId === data.bookingId)
+  if (idx < 0) return false
+
+  const current = containers.value[idx]
+  containers.value[idx] = {
+    ...current,
+    fillLevel: kind === 'fill' && typeof data.fillLevel === 'number' ? data.fillLevel : current.fillLevel,
+    lat: kind === 'location' ? (data.lat ?? null) : current.lat,
+    lon: kind === 'location' ? (data.lon ?? null) : current.lon,
+  }
+  return true
+}
+
+function handleLiveUpdate(message: LiveUpdateMessage) {
+  const payload = (message.data ?? {}) as Record<string, unknown>
+
+  if (message.type === 'container.fill_updated') {
+    const patched = patchContainerFromLive({
+      bookingId: typeof payload.bookingId === 'string' ? payload.bookingId : undefined,
+      fillLevel: typeof payload.fillLevel === 'number' ? payload.fillLevel : undefined,
+    }, 'fill')
+    if (!patched) scheduleRefresh()
+    return
+  }
+
+  if (message.type === 'container.location_updated') {
+    const patched = patchContainerFromLive({
+      bookingId: typeof payload.bookingId === 'string' ? payload.bookingId : undefined,
+      lat: typeof payload.lat === 'number' ? payload.lat : null,
+      lon: typeof payload.lon === 'number' ? payload.lon : null,
+    }, 'location')
+    if (!patched) scheduleRefresh()
+    return
+  }
+
+  const orderEvents = new Set([
+    'booking.created',
+    'booking.scheduled',
+    'booking.delivered',
+    'booking.empty_requested',
+    'booking.retrieved',
+    'dispatch.updated',
+    'retrieval.ready',
+    'delivery.signed',
+  ])
+  if (message.type === 'container.status_changed' || orderEvents.has(message.type)) {
+    scheduleRefresh()
+    return
+  }
+
+  if (message.type === 'invoice.issued' || message.type === 'certificate.generated') {
+    scheduleRefresh(true)
+  }
+}
+
+const live = useLiveUpdates({
+  onMessage: handleLiveUpdate,
+  onOpen: () => { liveConnected.value = true },
+  onClose: () => { liveConnected.value = false },
+})
+
 async function loadInvoices() {
   invoices.value = await invoiceApi.listForCustomer('cust-demo')
 }
+
+onMounted(() => {
+  load()
+  loadInvoices()
+  live.start()
+})
+
+onUnmounted(() => {
+  live.stop()
+  if (refreshTimer !== null) {
+    window.clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+})
 </script>
 
 <template>
@@ -100,7 +195,12 @@ async function loadInvoices() {
             <h1 class="dash-greeting">Kundenportal</h1>
             <p class="text-sm text-muted">Container-Übersicht</p>
           </div>
-          <button class="btn-primary btn-sm" @click="showOrder = true">+ Bestellen</button>
+            <div class="row" style="gap:0.5rem;align-items:center">
+              <span class="live-pill" :class="liveConnected ? 'live-pill-on' : 'live-pill-off'">
+                {{ liveConnected ? 'Live' : 'Offline' }}
+              </span>
+              <button class="btn-primary btn-sm" @click="showOrder = true">+ Bestellen</button>
+            </div>
         </div>
 
         <div v-if="loading" class="spinner"></div>
@@ -332,6 +432,25 @@ async function loadInvoices() {
 
 <style scoped>
 .dash-greeting { font-size: 1.25rem; }
+.live-pill {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.28rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+.live-pill-on {
+  color: #8ef2b3;
+  border-color: rgba(142, 242, 179, 0.4);
+  background: rgba(17, 92, 49, 0.35);
+}
+.live-pill-off {
+  color: #ffd2d2;
+  border-color: rgba(255, 120, 120, 0.4);
+  background: rgba(121, 35, 35, 0.35);
+}
 .tabs-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
