@@ -40,7 +40,25 @@ export default {
       signup: 'Konto erstellen',
       learnMore: 'Wie das Portal funktioniert',
       forCompanies: 'Sie sind ein Containerdienst?',
+      ar: 'Container in AR ansehen',
     },
+  },
+  ar: {
+    title: 'Passt der Container? Prüfen Sie es in AR.',
+    intro:
+      'Richten Sie die Handykamera auf Ihre Einfahrt oder Baustelle und stellen Sie den Container in Originalgröße auf – so sehen Sie sofort, ob er passt.',
+    back: 'Zurück',
+    pickSize: 'Größe wählen',
+    view: 'Im Raum ansehen',
+    dims: 'L {l} m × B {w} m × H {h} m',
+    fixedScale: 'Originalgröße (1:1)',
+    loading: 'Modell wird geladen …',
+    arHint: 'Tippen Sie auf „Im Raum ansehen" und richten Sie die Kamera auf den Boden.',
+    desktopHint:
+      'Die AR-Ansicht funktioniert am Smartphone (Android & iPhone). Öffnen Sie diese Seite dort oder schicken Sie sich den Link:',
+    copyLink: 'Link kopieren',
+    linkCopied: 'Kopiert!',
+    share: 'Teilen',
   },
   auth: {
     loginTab: 'Anmelden',
@@ -118,6 +136,7 @@ export default {
       title: 'Welche Container gibt es?',
       body:
         'Vom 3 m³ Mini-Absetzcontainer für schweren Bauschutt bis zum 36 m³ Abrollcontainer für Sperrmüll oder Folien – das Sortiment deckt typische Bau- und Entrümpelungsprojekte ab. Variante mit Deckel, wenn Inhalt vor Regen geschützt werden soll.',
+      arCta: 'Passt der Container? In AR ausprobieren →',
     },
     forCompanies: {
       title: 'Sie sind ein anderer Containerdienst?',

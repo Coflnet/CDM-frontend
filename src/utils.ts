@@ -29,6 +29,8 @@ export interface ContainerVariant {
   suitableWasteTypes: WasteType[]
   /** Approximate footprint (LxBxH) in metres for placement planning. */
   footprint: string
+  /** Numeric outer dimensions in metres (parsed counterpart of `footprint`). */
+  dimensionsM?: { l: number; w: number; h: number }
 }
 
 export const LEITL_CONTAINERS: ContainerVariant[] = [
@@ -42,6 +44,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Kompakter Mini-Container für kleine Mengen Bauschutt, Erdaushub oder schweren Schrott. Passt auch in enge Hofeinfahrten.',
     suitableWasteTypes: ['Concrete', 'Metal', 'Mixed'],
     footprint: '2,7 × 1,5 × 0,9 m',
+    dimensionsM: { l: 2.7, w: 1.5, h: 0.9 },
   },
   {
     id: 'absetz-7-offen',
@@ -53,6 +56,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Klassiker für Renovierungs- und Entrümpelungsprojekte. Schnell von oben zu beladen, ideal für sperrige Stücke.',
     suitableWasteTypes: ['Mixed', 'Wood', 'Metal'],
     footprint: '3,5 × 1,8 × 1,3 m',
+    dimensionsM: { l: 3.5, w: 1.8, h: 1.3 },
   },
   {
     id: 'absetz-7-klappe',
@@ -64,6 +68,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Wie die offene 7 m³-Variante, zusätzlich mit Stirnklappe – Schubkarren und Paletten lassen sich bequem hineinrollen.',
     suitableWasteTypes: ['Mixed', 'Wood', 'Concrete'],
     footprint: '3,5 × 1,8 × 1,3 m',
+    dimensionsM: { l: 3.5, w: 1.8, h: 1.3 },
   },
   {
     id: 'absetz-10-offen',
@@ -75,6 +80,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Größerer Absetzcontainer für mittlere Baustellen oder Sperrmüll. Offen, daher nicht für Stoffe geeignet, die nicht regennass werden dürfen.',
     suitableWasteTypes: ['Mixed', 'Wood', 'Metal'],
     footprint: '4,0 × 2,0 × 1,5 m',
+    dimensionsM: { l: 4.0, w: 2.0, h: 1.5 },
   },
   {
     id: 'absetz-10-deckel',
@@ -86,6 +92,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Geschlossene 10 m³-Variante mit Deckel – schützt vor Regen, verhindert Fremdwurf und ist daher die richtige Wahl für Akten, Papier oder Folien.',
     suitableWasteTypes: ['Paper', 'Plastic', 'Mixed', 'Electronics'],
     footprint: '4,0 × 2,0 × 1,5 m',
+    dimensionsM: { l: 4.0, w: 2.0, h: 1.5 },
   },
   {
     id: 'abroll-36-offen',
@@ -97,6 +104,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Großer Abrollcontainer für umfangreiche Bau-, Abriss- oder Räumungsprojekte. Wird per Hakenlift geliefert und abgeholt.',
     suitableWasteTypes: ['Mixed', 'Wood', 'Metal'],
     footprint: '6,5 × 2,4 × 2,5 m',
+    dimensionsM: { l: 6.5, w: 2.4, h: 2.5 },
   },
   {
     id: 'abroll-36-deckel',
@@ -108,6 +116,7 @@ export const LEITL_CONTAINERS: ContainerVariant[] = [
     description: 'Geschlossener Abrollcontainer – maximales Volumen, gegen Regen und Fremdwurf geschützt. Ideal für Folien, Kartonagen, Sperrmüll.',
     suitableWasteTypes: ['Paper', 'Plastic', 'Mixed', 'Wood'],
     footprint: '6,5 × 2,4 × 2,7 m',
+    dimensionsM: { l: 6.5, w: 2.4, h: 2.7 },
   },
 ]
 

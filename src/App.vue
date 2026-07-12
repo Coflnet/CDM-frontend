@@ -13,6 +13,10 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
+// Public standalone pages render through <router-view> instead of the auth
+// gating below (App.vue is also the catch-all route component).
+const isRoutedPage = computed(() => route.name === 'info' || route.name === 'ar')
+
 type AuthView = 'login' | 'signup'
 const authView = ref<AuthView>('login')
 
@@ -180,8 +184,11 @@ async function revokeApiToken(tokenId: string) {
 
 <template>
   <div id="app-root">
+    <!-- Public standalone pages (/info, /ar) -->
+    <router-view v-if="isRoutedPage" />
+
     <!-- Loading splash -->
-    <div v-if="authState.loading" class="role-screen">
+    <div v-else-if="authState.loading" class="role-screen">
       <div class="loading-spinner"></div>
     </div>
 
@@ -210,6 +217,8 @@ async function revokeApiToken(tokenId: string) {
         </ul>
         <p class="landing-links">
           <RouterLink to="/info" class="link-btn">{{ t('landing.cta.learnMore') }} &rarr;</RouterLink>
+          <span class="separator">·</span>
+          <RouterLink to="/ar" class="link-btn">{{ t('landing.cta.ar') }}</RouterLink>
           <span class="separator">·</span>
           <RouterLink to="/info" class="link-btn">{{ t('landing.cta.forCompanies') }}</RouterLink>
         </p>

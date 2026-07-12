@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import { LEITL_CONTAINERS } from '../utils'
@@ -66,6 +66,7 @@ function goHome() {
             Leitl Recycling Containerservice
           </a>.
         </p>
+        <RouterLink class="btn-primary ar-cta" to="/ar">{{ t('info.containers.arCta') }}</RouterLink>
       </section>
 
       <section class="info-section info-cta">
@@ -191,4 +192,9 @@ function goHome() {
 .catalog-meta dd { margin: 0; }
 .catalog-source { font-size: 0.8rem; margin-top: 0.5rem; }
 .catalog-source a { color: var(--accent, #7ed957); }
+.ar-cta {
+  display: inline-block;
+  margin-top: 0.5rem;
+  text-decoration: none;
+}
 </style>

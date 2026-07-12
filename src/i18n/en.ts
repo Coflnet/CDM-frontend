@@ -40,7 +40,25 @@ export default {
       signup: 'Create account',
       learnMore: 'How the portal works',
       forCompanies: 'Run a container service yourself?',
+      ar: 'View a container in AR',
     },
+  },
+  ar: {
+    title: 'Will it fit? Check it in AR.',
+    intro:
+      'Point your phone camera at your driveway or site and place the container at true size — you will see right away whether it fits.',
+    back: 'Back',
+    pickSize: 'Pick a size',
+    view: 'View in your space',
+    dims: 'L {l} m × W {w} m × H {h} m',
+    fixedScale: 'True size (1:1)',
+    loading: 'Loading model …',
+    arHint: 'Tap “View in your space” and point the camera at the floor.',
+    desktopHint:
+      'AR works on your phone (Android & iPhone). Open this page there, or send yourself the link:',
+    copyLink: 'Copy link',
+    linkCopied: 'Copied!',
+    share: 'Share',
   },
   auth: {
     loginTab: 'Sign in',
@@ -118,6 +136,7 @@ export default {
       title: 'Which containers are available?',
       body:
         'From the 3 m³ skip for heavy rubble up to the 36 m³ roll-off for bulky waste or foil – the line-up covers typical construction and clear-out jobs. Pick a lidded variant when the content should be kept dry or out of sight.',
+      arCta: 'Will it fit? Try it in AR →',
     },
     forCompanies: {
       title: 'Run a different container service?',
