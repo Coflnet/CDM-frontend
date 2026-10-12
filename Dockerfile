@@ -20,11 +20,11 @@ ENV VITE_API_BASE_URL=https://cdm.coflnet.com \
 	VITE_SUPABASE_URL=https://vpbxuxuqnaazqwmajaym.supabase.co
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.30.4-alpine AS runtime
 # Runs as uid 101 (numeric, so Kubernetes runAsNonRoot can verify it); the base
 # image keeps pid and temp paths in /tmp.
 USER root
-RUN rm -f /etc/nginx/conf.d/default.conf
+RUN apk upgrade --no-cache && rm -f /etc/nginx/conf.d/default.conf
 COPY --chown=101:0 nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build --chown=101:0 /src/dist /usr/share/nginx/html
 USER 101
