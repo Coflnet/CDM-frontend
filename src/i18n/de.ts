@@ -11,6 +11,7 @@ export default {
     logout: 'Abmelden',
     info: 'Mehr erfahren',
     home: 'Start',
+    deleteAccount: 'Konto löschen',
   },
   language: {
     label: 'Sprache',
@@ -149,5 +150,18 @@ export default {
   common: {
     loading: 'Bitte warten...',
     close: 'Schließen',
+  },
+  account: {
+    deleteTitle: 'Konto endgültig löschen?',
+    deleteWarning:
+      'Dein Konto und deine persönlichen Daten werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+    deleteRetentionNote:
+      'Rechnungen, Lieferprotokolle und Unterschriften bleiben davon ausgenommen und werden aus gesetzlichen Aufbewahrungspflichten (HGB/AO) weiterhin vorgehalten.',
+    deleteConfirm: 'Konto endgültig löschen',
+    deleteCancel: 'Abbrechen',
+    deleting: 'Wird gelöscht...',
+    deleteError: 'Konto konnte nicht gelöscht werden.',
+    deleteSuccess:
+      'Dein Konto wurde gelöscht. Rechnungen, Lieferprotokolle und Unterschriften bleiben aus gesetzlichen Gründen aufbewahrt.',
   },
 }

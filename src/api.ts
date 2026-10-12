@@ -444,6 +444,15 @@ export const meApi = {
   revokeApiToken(tokenId: string): Promise<void> {
     return request<void>(`/me/api-tokens/${tokenId}`, { method: 'DELETE' })
   },
+
+  /**
+   * GDPR "right to erasure" (Art. 17 GDPR). Deletes/anonymizes the account.
+   * Invoices, delivery protocols and signatures are retained for statutory
+   * retention periods (see AccountDeletionService on the backend).
+   */
+  deleteAccount(): Promise<void> {
+    return request<void>('/me', { method: 'DELETE' })
+  },
 }
 
 export interface TestLoginResponse {

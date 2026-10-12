@@ -32,6 +32,11 @@ const createdApiToken = ref<CreatedApiToken | null>(null)
 const apiTokenError = ref('')
 const apiTokenLoading = ref(false)
 
+const showDeleteAccount = ref(false)
+const deleteAccountLoading = ref(false)
+const deleteAccountError = ref('')
+const accountDeleted = ref(false)
+
 const availableRoles = computed<UserRole[]>(() => {
   const roles: UserRole[] = []
   if (authState.roles.includes('customer')) roles.push('customer')
@@ -180,6 +185,21 @@ async function revokeApiToken(tokenId: string) {
     apiTokenLoading.value = false
   }
 }
+
+async function confirmDeleteAccount() {
+  deleteAccountLoading.value = true
+  deleteAccountError.value = ''
+  try {
+    await meApi.deleteAccount()
+    showDeleteAccount.value = false
+    await logout()
+    accountDeleted.value = true
+  } catch (e: unknown) {
+    deleteAccountError.value = e instanceof Error ? e.message : t('account.deleteError')
+  } finally {
+    deleteAccountLoading.value = false
+  }
+}
 </script>
 
 <template>
@@ -234,6 +254,8 @@ async function revokeApiToken(tokenId: string) {
         </div>
         <p class="brand-sub">{{ t('brand.sub') }}</p>
         <p class="brand-by">{{ t('brand.by') }}</p>
+
+        <div v-if="accountDeleted" class="alert alert-success mb-2">{{ t('account.deleteSuccess') }}</div>
 
         <!-- Tab switcher -->
         <div class="auth-tabs">
@@ -369,6 +391,7 @@ async function revokeApiToken(tokenId: string) {
           <button class="btn-ghost btn-sm" @click="openApiTokens">{{ t('nav.apiTokens') }}</button>
           <button v-if="canSwitchRoles" class="btn-ghost btn-sm" @click="clearSavedRole()">{{ t('nav.role') }}</button>
           <button class="btn-ghost btn-sm" @click="logout">{{ t('nav.logout') }}</button>
+          <button class="btn-ghost btn-sm danger-text" @click="showDeleteAccount = true">{{ t('nav.deleteAccount') }}</button>
         </div>
       </header>
       <CustomerDashboard v-if="authState.role === 'customer'" />
@@ -405,6 +428,31 @@ async function revokeApiToken(tokenId: string) {
                 <button v-if="!token.revokedAt" class="btn-ghost btn-sm" @click="revokeApiToken(token.tokenId)">{{ t('apiTokens.revoke') }}</button>
                 <span v-else class="badge badge-gray">{{ t('apiTokens.revoked') }}</span>
               </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <Transition name="fade">
+        <div v-if="showDeleteAccount" class="modal-overlay" @click.self="showDeleteAccount = false">
+          <div class="modal">
+            <div class="modal-header">
+              <h2>{{ t('account.deleteTitle') }}</h2>
+              <button class="modal-close" @click="showDeleteAccount = false">&times;</button>
+            </div>
+
+            <div v-if="deleteAccountError" class="alert alert-error mb-2">{{ deleteAccountError }}</div>
+
+            <p>{{ t('account.deleteWarning') }}</p>
+            <p class="text-sm text-muted mt-2">{{ t('account.deleteRetentionNote') }}</p>
+
+            <div class="row mt-3" style="gap:0.75rem">
+              <button class="btn-ghost btn-block" :disabled="deleteAccountLoading" @click="showDeleteAccount = false">
+                {{ t('account.deleteCancel') }}
+              </button>
+              <button class="btn-danger btn-block" :disabled="deleteAccountLoading" @click="confirmDeleteAccount">
+                {{ deleteAccountLoading ? t('account.deleting') : t('account.deleteConfirm') }}
+              </button>
             </div>
           </div>
         </div>
@@ -781,6 +829,10 @@ button:disabled {
   display: flex;
   gap: 0.4rem;
   flex-shrink: 0;
+}
+
+.danger-text {
+  color: #e74c3c;
 }
 
 .api-token-modal {

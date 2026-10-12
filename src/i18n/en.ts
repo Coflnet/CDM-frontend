@@ -11,6 +11,7 @@ export default {
     logout: 'Sign out',
     info: 'Learn more',
     home: 'Home',
+    deleteAccount: 'Delete account',
   },
   language: {
     label: 'Language',
@@ -149,5 +150,18 @@ export default {
   common: {
     loading: 'Please wait...',
     close: 'Close',
+  },
+  account: {
+    deleteTitle: 'Delete your account?',
+    deleteWarning:
+      'Your account and personal data will be deleted. This action cannot be undone.',
+    deleteRetentionNote:
+      'Invoices, delivery protocols and signatures are excluded and will continue to be retained for legally required periods (German commercial/tax law).',
+    deleteConfirm: 'Permanently delete account',
+    deleteCancel: 'Cancel',
+    deleting: 'Deleting...',
+    deleteError: 'Could not delete the account.',
+    deleteSuccess:
+      'Your account has been deleted. Invoices, delivery protocols and signatures remain retained for legally required reasons.',
   },
 }

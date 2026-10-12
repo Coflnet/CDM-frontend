@@ -20,10 +20,14 @@ ENV VITE_API_BASE_URL=https://cdm.coflnet.com \
 	VITE_SUPABASE_URL=https://vpbxuxuqnaazqwmajaym.supabase.co
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+# Runs as uid 101 (numeric, so Kubernetes runAsNonRoot can verify it); the base
+# image keeps pid and temp paths in /tmp.
+USER root
 RUN rm -f /etc/nginx/conf.d/default.conf
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /src/dist /usr/share/nginx/html
+COPY --chown=101:0 nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build --chown=101:0 /src/dist /usr/share/nginx/html
+USER 101
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s CMD wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1
 CMD ["nginx", "-g", "daemon off;"]
